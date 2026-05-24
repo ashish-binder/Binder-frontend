@@ -506,3 +506,117 @@ body.ai-panel-open {
     font-size: 14px;
   }
 }
+
+/* ─── COO connect strip ─────────────────────────────────────────────────── */
+.coo-connect-strip {
+  padding: 10px 16px;
+  border-bottom: 1px solid rgba(212, 170, 90, 0.15);
+  background: rgba(20, 20, 24, 0.55);
+  font-size: 12px;
+}
+
+.coo-connect-label {
+  display: block;
+  color: rgba(212, 170, 90, 0.85);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 6px;
+}
+
+.coo-connect-row {
+  display: flex;
+  gap: 6px;
+  align-items: stretch;
+}
+
+.coo-connect-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 1px solid rgba(212, 170, 90, 0.25);
+  background: rgba(0, 0, 0, 0.35);
+  color: #fff;
+  font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
+  font-size: 12px;
+  outline: none;
+}
+
+.coo-connect-input:focus {
+  border-color: rgba(212, 170, 90, 0.65);
+}
+
+.coo-connect-btn {
+  padding: 6px 12px;
+  border-radius: 6px;
+  border: none;
+  background: linear-gradient(135deg, #d4aa5a, #b88a3a);
+  color: #1a1a1a;
+  font-weight: 600;
+  font-size: 12px;
+  cursor: pointer;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+
+.coo-connect-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.coo-connect-btn:not(:disabled):hover {
+  transform: translateY(-1px);
+}
+
+.coo-connect-error {
+  margin-top: 6px;
+  color: #ff8a8a;
+  font-size: 11px;
+}
+
+.coo-connect-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: rgba(255, 255, 255, 0.78);
+}
+
+.coo-connect-uuid {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
+  font-size: 12px;
+}
+
+.coo-state-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #888;
+  flex: 0 0 8px;
+  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.25);
+}
+
+.coo-state-ready { background: #4ade80; box-shadow: 0 0 6px rgba(74, 222, 128, 0.7); }
+.coo-state-connecting,
+.coo-state-authenticating,
+.coo-state-retrying,
+.coo-state-disconnected { background: #facc15; box-shadow: 0 0 6px rgba(250, 204, 21, 0.6); }
+.coo-state-auth-failed { background: #ef4444; box-shadow: 0 0 6px rgba(239, 68, 68, 0.7); }
+.coo-state-idle { background: #888; }
+
+.coo-connect-change {
+  border: none;
+  background: transparent;
+  color: rgba(212, 170, 90, 0.9);
+  font-size: 11px;
+  text-decoration: underline;
+  cursor: pointer;
+  padding: 0;
+}
+
+.coo-connect-change:hover {
+  color: #d4aa5a;
+}

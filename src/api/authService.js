@@ -368,6 +368,23 @@ export const getMembers = async () => {
 };
 
 /**
+ * Get Binder COO chat WebSocket config for the currently authenticated user.
+ * The backend gates this by tenant (env allowlist or `coo_chat` feature flag) and
+ * only returns the gateway authToken to authenticated users — never bundled in JS.
+ * Returns { gatewayUrl, authToken, userId, tenantId, handle } on success.
+ */
+export const getCooChatConfig = async () => {
+  const response = await apiRequest('auth/me/coo-chat-config/');
+  const data = await response.json();
+  if (!response.ok) {
+    const err = new Error(data?.message || data?.detail || 'COO chat config unavailable');
+    err.status = response.status;
+    throw err;
+  }
+  return data?.data || data;
+};
+
+/**
  * Get current tenant's feature flags (key -> bool) for plan-based feature gating
  */
 export const getFeatureFlags = async () => {
