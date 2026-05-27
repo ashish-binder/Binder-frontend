@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { FormCard } from '@/components/ui/form-layout';
-import { getIPOMasterCNS, saveIPOMasterCNSRows, getFactoryCodeDraft } from '../../services/integration';
+import { getIPOMasterCNS, saveIPOMasterCNSRows, getFactoryCodeDraft, shareIpoToPurchase } from '../../services/integration';
 import { useLoading } from '../../context/LoadingContext';
 
 // Excel-style frozen pane: top header row sticks to top; the leftmost columns
@@ -1267,7 +1267,29 @@ const IPOMasterCNS = ({ ipo }) => {
   const [selected, setSelected] = useState({});
   const [manualInputs, setManualInputs] = useState({});
   const [derivedFormData, setDerivedFormData] = useState(null);
+  const [sharedToPurchase, setSharedToPurchase] = useState(false);
+  const [sharingToPurchase, setSharingToPurchase] = useState(false);
+  const [shareError, setShareError] = useState('');
   const { showLoading, hideLoading } = useLoading();
+
+  const handleShareToPurchase = async () => {
+    const ipoId = ipo?.ipoId || ipo?.id;
+    if (!ipoId || sharedToPurchase || sharingToPurchase) return;
+    setSharingToPurchase(true);
+    setShareError('');
+    try {
+      const res = await shareIpoToPurchase(ipoId);
+      if (res?.shared_to_purchase) {
+        setSharedToPurchase(true);
+      } else if (res?.detail) {
+        setShareError(res.detail);
+      }
+    } catch (err) {
+      setShareError(err?.message || 'Failed to share IPO to Purchase.');
+    } finally {
+      setSharingToPurchase(false);
+    }
+  };
   const setManualInput = (rowId, field, value) => {
     setManualInputs((prev) => ({
       ...prev,
@@ -1285,6 +1307,7 @@ const IPOMasterCNS = ({ ipo }) => {
         const response = await getIPOMasterCNS(ipo.ipoId || ipo.id);
         if (!cancelled) {
           setData(response);
+          setSharedToPurchase(Boolean(response?.shared_to_purchase || ipo?.shared_to_purchase));
           const seed = {};
           const seedFields = [
             'purchase_width',
@@ -1812,17 +1835,41 @@ const IPOMasterCNS = ({ ipo }) => {
 
   return (
     <div>
-      <div className="flex items-center gap-2" style={{ marginBottom: 12 }}>
-        {availableTabs.map((t) => (
-          <Button
-            key={t.key}
-            type="button"
-            variant={activeTab === t.key ? 'default' : 'outline'}
-            onClick={() => setActiveTab(t.key)}
-          >
-            {t.label}
-          </Button>
-        ))}
+      <div
+        className="flex items-center gap-2"
+        style={{ marginBottom: 12, justifyContent: 'space-between', flexWrap: 'wrap' }}
+      >
+        <div className="flex items-center gap-2" style={{ flexWrap: 'wrap' }}>
+          {availableTabs.map((t) => (
+            <Button
+              key={t.key}
+              type="button"
+              variant={activeTab === t.key ? 'default' : 'outline'}
+              onClick={() => setActiveTab(t.key)}
+            >
+              {t.label}
+            </Button>
+          ))}
+        </div>
+        <div className="flex items-center gap-2">
+          {shareError && (
+            <span style={{ fontSize: 12, color: 'crimson' }}>{shareError}</span>
+          )}
+          {sharedToPurchase ? (
+            <Button type="button" variant="outline" disabled>
+              Shared to Purchase ✓
+            </Button>
+          ) : (
+            <Button
+              type="button"
+              variant="default"
+              onClick={handleShareToPurchase}
+              disabled={sharingToPurchase}
+            >
+              {sharingToPurchase ? 'Sharing…' : 'Share to Purchase'}
+            </Button>
+          )}
+        </div>
       </div>
 
       {activeTab === 'raw_material' && (

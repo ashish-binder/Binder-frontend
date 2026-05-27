@@ -1412,3 +1412,99 @@ export const saveContextualUQRFormDraft = async ({
   });
   return await response.json();
 };
+
+// ============================================================================
+// PURCHASE SECTION
+// ============================================================================
+
+export const shareIpoToPurchase = async (ipoId) => {
+  const response = await apiRequest(`ims/ipos/${ipoId}/share-to-purchase/`, {
+    method: 'POST',
+    body: JSON.stringify({}),
+  });
+  return await response.json();
+};
+
+export const getPurchaseIpos = async (type) => {
+  const query = type ? `?type=${encodeURIComponent(type)}` : '';
+  const response = await apiRequest(`ims/purchase/ipos/${query}`);
+  return await response.json();
+};
+
+export const getPurchaseGrid = async (ipoId, { tab, category } = {}) => {
+  const params = new URLSearchParams();
+  if (tab) params.set('tab', tab);
+  if (category) params.set('category', category);
+  const q = params.toString();
+  const response = await apiRequest(`ims/purchase/${ipoId}/grid/${q ? `?${q}` : ''}`);
+  return await response.json();
+};
+
+export const patchPurchaseLineItem = async (sourceType, sourceId, patch) => {
+  const response = await apiRequest(
+    `ims/purchase/line-items/${sourceType}/${sourceId}/`,
+    { method: 'PATCH', body: JSON.stringify(patch) }
+  );
+  return await response.json();
+};
+
+export const previewVpo = async (ipoId, lines) => {
+  const response = await apiRequest(`ims/purchase/${ipoId}/vpo/preview/`, {
+    method: 'POST',
+    body: JSON.stringify({ lines }),
+  });
+  return await response.json();
+};
+
+export const issueVpo = async (ipoId, lines) => {
+  const response = await apiRequest(`ims/purchase/${ipoId}/vpo/issue/`, {
+    method: 'POST',
+    body: JSON.stringify({ lines }),
+  });
+  return await response.json();
+};
+
+export const getVpoHistory = async ({ ipoId, status } = {}) => {
+  const params = new URLSearchParams();
+  if (ipoId) params.set('ipo', ipoId);
+  if (status) params.set('status', status);
+  const q = params.toString();
+  const response = await apiRequest(`ims/purchase/vpos/${q ? `?${q}` : ''}`);
+  return await response.json();
+};
+
+export const getVpoDetail = async (vpoId) => {
+  const response = await apiRequest(`ims/purchase/vpos/${vpoId}/`);
+  return await response.json();
+};
+
+export const getStockLookup = async ({ category, material, ipo } = {}) => {
+  const params = new URLSearchParams();
+  if (category) params.set('category', category);
+  if (material) params.set('material', material);
+  if (ipo) params.set('ipo', ipo);
+  const q = params.toString();
+  const response = await apiRequest(`ims/stock/${q ? `?${q}` : ''}`);
+  return await response.json();
+};
+
+export const requestUqr = async ({ stockItemId, stockItemUin, notes, fileRef } = {}) => {
+  const response = await apiRequest('ims/stock/uqr/', {
+    method: 'POST',
+    body: JSON.stringify({
+      stock_item_id: stockItemId || null,
+      stock_item_uin: stockItemUin || '',
+      notes: notes || '',
+      file_ref: fileRef || '',
+    }),
+  });
+  return await response.json();
+};
+
+export const issueStockToIpo = async (ipoId, lines) => {
+  const response = await apiRequest(`ims/purchase/${ipoId}/stock-issue/`, {
+    method: 'POST',
+    body: JSON.stringify({ lines }),
+  });
+  return await response.json();
+};
