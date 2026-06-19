@@ -1,62 +1,63 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from "react";
 import {
   getIPOs,
   getFactoryCodes,
   createStockSheet,
-} from '../services/integration';
-import './InwardStoreSheet.css';
-import './StockSheet.css';
+} from "../services/integration";
+import "./InwardStoreSheet.css";
+import "./StockSheet.css";
 
 const IPO_TYPE_OPTIONS = [
-  { value: 'PRODUCTION', label: 'Production' },
-  { value: 'SAMPLING', label: 'Sampling' },
-  { value: 'COMPANY', label: 'Company' },
-  { value: 'COMPANY_ESSENTIALS', label: 'Company Essentials' },
+  { value: "PRODUCTION", label: "Production" },
+  { value: "SAMPLING", label: "Sampling" },
+  { value: "COMPANY", label: "Company" },
+  { value: "COMPANY_ESSENTIALS", label: "Company Essentials" },
 ];
 
 const CATEGORY_OPTIONS = [
-  { value: 'YARN', label: 'Yarn' },
-  { value: 'FABRIC', label: 'Fabric' },
-  { value: 'FIBER', label: 'Fiber' },
-  { value: 'FOAM', label: 'Foam' },
-  { value: 'TRIMS_ACCESSORY', label: 'Trims & Accessory' },
-  { value: 'ARTWORK_LABELLING', label: 'Artwork & Labelling' },
-  { value: 'PACKAGING', label: 'Packaging' },
-  { value: 'COMPANY_ESSENTIALS', label: 'Company Essentials' },
+  { value: "YARN", label: "Yarn" },
+  { value: "FABRIC", label: "Fabric" },
+  { value: "FIBER", label: "Fiber" },
+  { value: "FOAM", label: "Foam" },
+  { value: "TRIMS_ACCESSORY", label: "Trims & Accessory" },
+  { value: "ARTWORK_LABELLING", label: "Artwork & Labelling" },
+  { value: "PACKAGING", label: "Packaging" },
+  { value: "COMPANY_ESSENTIALS", label: "Company Essentials" },
 ];
 
 const YARN_SUB_OPTIONS = [
-  { value: 'STITCHING_THREAD', label: 'Stitching Thread' },
-  { value: 'NOT_APPLICABLE', label: 'Not Applicable' },
+  { value: "STITCHING_THREAD", label: "Stitching Thread" },
+  { value: "NOT_APPLICABLE", label: "Not Applicable" },
 ];
 
 const ipoTypeToOrderType = {
-  PRODUCTION: 'PD',
-  SAMPLING: 'SAM',
-  COMPANY: 'SELF',
-  COMPANY_ESSENTIALS: 'SELF',
+  PRODUCTION: "PD",
+  SAMPLING: "SAM",
+  COMPANY: "SELF",
+  COMPANY_ESSENTIALS: "SELF",
 };
 
 const StockSheet = ({ onBack, onSaved }) => {
   // Form state
-  const [source] = useState('FROM_IPO');
-  const [ipoType, setIpoType] = useState('');
-  const [selectedIpo, setSelectedIpo] = useState('');
-  const [selectedIpc, setSelectedIpc] = useState('');
-  const [category, setCategory] = useState('');
-  const [yarnSubCategory, setYarnSubCategory] = useState('');
+  const [source, setSource] = useState("FROM_IPO");
+  const [ipoType, setIpoType] = useState("");
+  const [selectedIpo, setSelectedIpo] = useState("");
+  const [selectedIpc, setSelectedIpc] = useState("");
+  const [category, setCategory] = useState("");
+  const [yarnSubCategory, setYarnSubCategory] = useState("");
+  const isFromIpo = source === "FROM_IPO";
 
   // Item rows (Sr.No., material_description, unit, image, details)
   const [itemRows, setItemRows] = useState([]);
   const [itemColumns, setItemColumns] = useState([]);
 
   // Packages
-  const [numPackagesInput, setNumPackagesInput] = useState('');
+  const [numPackagesInput, setNumPackagesInput] = useState("");
   const [packageRows, setPackageRows] = useState([]);
 
   // Rate / Amount
-  const [rate, setRate] = useState('');
-  const [amount, setAmount] = useState('');
+  const [rate, setRate] = useState("");
+  const [amount, setAmount] = useState("");
 
   // Lookup data
   const [ipoList, setIpoList] = useState([]);
@@ -64,27 +65,38 @@ const StockSheet = ({ onBack, onSaved }) => {
 
   // UI state
   const [saving, setSaving] = useState(false);
-  const [errorMsg, setErrorMsg] = useState('');
-  const [successMsg, setSuccessMsg] = useState('');
+  const [errorMsg, setErrorMsg] = useState("");
+  const [successMsg, setSuccessMsg] = useState("");
 
   // ---- Effects: load IPOs based on IPO type ----
   useEffect(() => {
-    if (!ipoType) { setIpoList([]); return; }
+    if (!isFromIpo || !ipoType) {
+      setIpoList([]);
+      return;
+    }
     const orderType = ipoTypeToOrderType[ipoType];
     (async () => {
       try {
         const data = await getIPOs({ order_type: orderType });
         const results = data?.results || data || [];
-        setIpoList(Array.isArray(results) ? results.filter((ipo) => ipo.order_type === orderType) : []);
+        setIpoList(
+          Array.isArray(results)
+            ? results.filter((ipo) => ipo.order_type === orderType)
+            : [],
+        );
       } catch {
         setIpoList([]);
       }
     })();
-  }, [ipoType]);
+  }, [ipoType, isFromIpo]);
 
   // ---- Effects: load IPC (factory codes) for selected IPO ----
   useEffect(() => {
-    if (!selectedIpo) { setIpcList([]); setSelectedIpc(''); return; }
+    if (!isFromIpo || !selectedIpo) {
+      setIpcList([]);
+      setSelectedIpc("");
+      return;
+    }
     (async () => {
       try {
         const data = await getFactoryCodes({ ipo: selectedIpo });
@@ -92,8 +104,8 @@ const StockSheet = ({ onBack, onSaved }) => {
         // Dedupe by displayed code so the dropdown doesn't show repeats.
         const seen = new Set();
         const unique = [];
-        for (const fc of (Array.isArray(results) ? results : [])) {
-          const label = fc.ipc_code || fc.code || '';
+        for (const fc of Array.isArray(results) ? results : []) {
+          const label = fc.ipc_code || fc.code || "";
           if (label && seen.has(label)) continue;
           seen.add(label);
           unique.push(fc);
@@ -103,7 +115,7 @@ const StockSheet = ({ onBack, onSaved }) => {
         setIpcList([]);
       }
     })();
-  }, [selectedIpo]);
+  }, [selectedIpo, isFromIpo]);
 
   // ---- Items loader is intentionally disabled (work in progress) ----
   // The backend material-items endpoint is being reworked; until it lands,
@@ -117,11 +129,14 @@ const StockSheet = ({ onBack, onSaved }) => {
   // ---- Effect: rebuild package rows when num_packages changes ----
   useEffect(() => {
     const n = parseInt(numPackagesInput, 10);
-    if (!Number.isFinite(n) || n <= 0) { setPackageRows([]); return; }
+    if (!Number.isFinite(n) || n <= 0) {
+      setPackageRows([]);
+      return;
+    }
     setPackageRows((prev) => {
       const next = [];
       for (let i = 0; i < n; i++) {
-        next.push(prev[i] || { package_no: i + 1, qty: '', unit: '' });
+        next.push(prev[i] || { package_no: i + 1, qty: "", unit: "" });
       }
       return next;
     });
@@ -129,11 +144,14 @@ const StockSheet = ({ onBack, onSaved }) => {
 
   // ---- Derived values ----
   const showUnitColumn = useMemo(() => {
-    return itemRows.some((row) => row.unit && row.unit.toUpperCase() !== 'PCS');
+    return itemRows.some((row) => row.unit && row.unit.toUpperCase() !== "PCS");
   }, [itemRows]);
 
   const totalQty = useMemo(() => {
-    return packageRows.reduce((sum, pkg) => sum + (parseFloat(pkg.qty) || 0), 0);
+    return packageRows.reduce(
+      (sum, pkg) => sum + (parseFloat(pkg.qty) || 0),
+      0,
+    );
   }, [packageRows]);
 
   // ---- Handlers ----
@@ -145,32 +163,51 @@ const StockSheet = ({ onBack, onSaved }) => {
     });
   };
 
-  const handleSave = async () => {
-    setErrorMsg('');
-    setSuccessMsg('');
+  const handleSourceChange = (nextSource) => {
+    if (nextSource === source) return;
+    setSource(nextSource);
+    setIpoType("");
+    setSelectedIpo("");
+    setSelectedIpc("");
+    setIpoList([]);
+    setIpcList([]);
+  };
 
-    if (!ipoType) { setErrorMsg('Please select IPO Type.'); return; }
-    if (!category) { setErrorMsg('Please select Category.'); return; }
-    if (category === 'YARN' && !yarnSubCategory) {
-      setErrorMsg('Please select the Yarn sub-category.'); return;
+  const handleSave = async () => {
+    setErrorMsg("");
+    setSuccessMsg("");
+
+    if (isFromIpo && !ipoType) {
+      setErrorMsg("Please select IPO Type.");
+      return;
     }
-    if (category !== 'COMPANY_ESSENTIALS' && !selectedIpc) {
-      setErrorMsg('Please select an IPC Code.'); return;
+    if (!category) {
+      setErrorMsg("Please select Category.");
+      return;
+    }
+    if (category === "YARN" && !yarnSubCategory) {
+      setErrorMsg("Please select the Yarn sub-category.");
+      return;
+    }
+    if (isFromIpo && category !== "COMPANY_ESSENTIALS" && !selectedIpc) {
+      setErrorMsg("Please select an IPC Code.");
+      return;
     }
 
     const ipcDisplay = (() => {
+      if (!isFromIpo) return "";
       const found = ipcList.find((c) => c.id === selectedIpc);
-      return found ? (found.ipc_code || found.code || '') : '';
+      return found ? found.ipc_code || found.code || "" : "";
     })();
 
     const payload = {
       source,
-      ipo_type: ipoType,
-      ipo: selectedIpo || null,
-      ipc: selectedIpc || null,
-      ipc_code_text: ipcDisplay,
+      ipo_type: isFromIpo ? ipoType : null,
+      ipo: isFromIpo ? selectedIpo || null : null,
+      ipc: isFromIpo ? selectedIpc || null : null,
+      ipc_code_text: isFromIpo ? ipcDisplay : "",
       category,
-      yarn_sub_category: category === 'YARN' ? yarnSubCategory : '',
+      yarn_sub_category: category === "YARN" ? yarnSubCategory : "",
       num_packages: parseInt(numPackagesInput, 10) || 0,
       total_qty: totalQty,
       rate: parseFloat(rate) || 0,
@@ -178,29 +215,29 @@ const StockSheet = ({ onBack, onSaved }) => {
       item_columns: itemColumns,
       items: itemRows.map((r, i) => ({
         sr_no: r.sr_no || i + 1,
-        material_description: r.material_description || '',
-        unit: r.unit || '',
+        material_description: r.material_description || "",
+        unit: r.unit || "",
         details: r.details || {},
         image: r.image || null,
       })),
       packages: packageRows.map((p, i) => ({
         package_no: p.package_no || i + 1,
         qty: parseFloat(p.qty) || 0,
-        unit: p.unit || '',
+        unit: p.unit || "",
       })),
     };
 
     setSaving(true);
     try {
       const res = await createStockSheet(payload);
-      if (res?.status === 'success' || res?.id) {
-        setSuccessMsg('Stock Sheet saved successfully.');
+      if (res?.status === "success" || res?.id) {
+        setSuccessMsg("Stock Sheet saved successfully.");
         if (onSaved) onSaved(res?.data || res);
       } else {
-        setErrorMsg(res?.message || JSON.stringify(res) || 'Failed to save.');
+        setErrorMsg(res?.message || JSON.stringify(res) || "Failed to save.");
       }
     } catch (err) {
-      setErrorMsg(err?.message || 'An error occurred while saving.');
+      setErrorMsg(err?.message || "An error occurred while saving.");
     } finally {
       setSaving(false);
     }
@@ -209,94 +246,128 @@ const StockSheet = ({ onBack, onSaved }) => {
   return (
     <div className="iss-container">
       <div className="iss-header">
-        <button className="iss-back-button" onClick={onBack}>← Back</button>
+        <button className="iss-back-button" onClick={onBack}>
+          ← Back
+        </button>
         <h1 className="iss-title">Add Stock Items</h1>
-        <p className="iss-description">Create a Stock Sheet entry from an existing IPO.</p>
+        <p className="iss-description">
+          {isFromIpo
+            ? "Create a Stock Sheet entry from an existing IPO."
+            : "Create a Stock Sheet entry manually without linking an IPO."}
+        </p>
       </div>
 
       {successMsg && <div className="iss-success">{successMsg}</div>}
       {errorMsg && <div className="iss-error">{errorMsg}</div>}
 
       <div className="iss-form">
-        {/* Source: From IPO (only option for now) */}
+        {/* Source */}
         <div className="ss-source-row">
-          <label className="ss-source-pill active">From IPO</label>
+          <button
+            type="button"
+            className={`ss-source-pill ${isFromIpo ? "active" : ""}`}
+            onClick={() => handleSourceChange("FROM_IPO")}
+          >
+            From IPO
+          </button>
+          <button
+            type="button"
+            className={`ss-source-pill ${!isFromIpo ? "active" : ""}`}
+            onClick={() => handleSourceChange("ADD_NEW")}
+          >
+            Add New
+          </button>
         </div>
 
         {/* Top dropdowns */}
         <div className="iss-form-grid">
-          <div className="iss-form-group">
-            <label className="iss-form-label">IPO Type <span className="iss-required">*</span></label>
-            <select
-              className="iss-form-select"
-              value={ipoType}
-              onChange={(e) => {
-                setIpoType(e.target.value);
-                setSelectedIpo('');
-                setSelectedIpc('');
-              }}
-            >
-              <option value="">-- Select --</option>
-              {IPO_TYPE_OPTIONS.map((o) => (
-                <option key={o.value} value={o.value}>{o.label}</option>
-              ))}
-            </select>
-          </div>
+          {isFromIpo && (
+            <>
+              <div className="iss-form-group">
+                <label className="iss-form-label">
+                  IPO Type <span className="iss-required">*</span>
+                </label>
+                <select
+                  className="iss-form-select"
+                  value={ipoType}
+                  onChange={(e) => {
+                    setIpoType(e.target.value);
+                    setSelectedIpo("");
+                    setSelectedIpc("");
+                  }}
+                >
+                  <option value="">-- Select --</option>
+                  {IPO_TYPE_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="iss-form-group">
+                <label className="iss-form-label">Select IPO</label>
+                <select
+                  className="iss-form-select"
+                  value={selectedIpo}
+                  onChange={(e) => setSelectedIpo(e.target.value)}
+                  disabled={!ipoType}
+                >
+                  <option value="">-- Select IPO --</option>
+                  {ipoList.map((ipo) => (
+                    <option key={ipo.id} value={ipo.id}>
+                      {ipo.ipo_code}{" "}
+                      {ipo.program_name ? `— ${ipo.program_name}` : ""}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="iss-form-group">
+                <label className="iss-form-label">IPC Code</label>
+                <select
+                  className="iss-form-select"
+                  value={selectedIpc}
+                  onChange={(e) => setSelectedIpc(e.target.value)}
+                  disabled={!selectedIpo}
+                >
+                  <option value="">-- Select IPC --</option>
+                  {ipcList.map((ipc) => (
+                    <option key={ipc.id} value={ipc.id}>
+                      {ipc.ipc_code || ipc.code}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </>
+          )}
 
           <div className="iss-form-group">
-            <label className="iss-form-label">Select IPO</label>
-            <select
-              className="iss-form-select"
-              value={selectedIpo}
-              onChange={(e) => setSelectedIpo(e.target.value)}
-              disabled={!ipoType}
-            >
-              <option value="">-- Select IPO --</option>
-              {ipoList.map((ipo) => (
-                <option key={ipo.id} value={ipo.id}>
-                  {ipo.ipo_code} {ipo.program_name ? `— ${ipo.program_name}` : ''}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="iss-form-group">
-            <label className="iss-form-label">IPC Code</label>
-            <select
-              className="iss-form-select"
-              value={selectedIpc}
-              onChange={(e) => setSelectedIpc(e.target.value)}
-              disabled={!selectedIpo}
-            >
-              <option value="">-- Select IPC --</option>
-              {ipcList.map((ipc) => (
-                <option key={ipc.id} value={ipc.id}>
-                  {ipc.ipc_code || ipc.code}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="iss-form-group">
-            <label className="iss-form-label">Select Category <span className="iss-required">*</span></label>
+            <label className="iss-form-label">
+              Select Category <span className="iss-required">*</span>
+            </label>
             <select
               className="iss-form-select"
               value={category}
               onChange={(e) => {
                 setCategory(e.target.value);
-                setYarnSubCategory('');
+                setYarnSubCategory("");
               }}
             >
               <option value="">-- Select --</option>
               {CATEGORY_OPTIONS.map((o) => (
-                <option key={o.value} value={o.value}>{o.label}</option>
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
               ))}
             </select>
           </div>
 
-          {category === 'YARN' && (
+          {category === "YARN" && (
             <div className="iss-form-group">
-              <label className="iss-form-label">Yarn Sub-Category <span className="iss-required">*</span></label>
+              <label className="iss-form-label">
+                Yarn Sub-Category <span className="iss-required">*</span>
+              </label>
               <select
                 className="iss-form-select"
                 value={yarnSubCategory}
@@ -304,7 +375,9 @@ const StockSheet = ({ onBack, onSaved }) => {
               >
                 <option value="">-- Select --</option>
                 {YARN_SUB_OPTIONS.map((o) => (
-                  <option key={o.value} value={o.value}>{o.label}</option>
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
                 ))}
               </select>
             </div>
@@ -314,7 +387,9 @@ const StockSheet = ({ onBack, onSaved }) => {
         {/* Material Items Table — disabled while the items endpoint is being reworked. */}
         <div className="ss-section">
           <h3 className="ss-section-title">Items</h3>
-          <p className="ss-muted">Work in progress — items will load here once available.</p>
+          <p className="ss-muted">
+            Work in progress — items will load here once available.
+          </p>
         </div>
 
         {/* # of Packages */}
@@ -352,7 +427,9 @@ const StockSheet = ({ onBack, onSaved }) => {
                           min="0"
                           step="any"
                           value={pkg.qty}
-                          onChange={(e) => updatePackage(idx, 'qty', e.target.value)}
+                          onChange={(e) =>
+                            updatePackage(idx, "qty", e.target.value)
+                          }
                         />
                       </td>
                       {showUnitColumn && (
@@ -361,7 +438,9 @@ const StockSheet = ({ onBack, onSaved }) => {
                             className="iss-form-input"
                             type="text"
                             value={pkg.unit}
-                            onChange={(e) => updatePackage(idx, 'unit', e.target.value)}
+                            onChange={(e) =>
+                              updatePackage(idx, "unit", e.target.value)
+                            }
                             placeholder="e.g. MTR"
                           />
                         </td>
@@ -369,8 +448,12 @@ const StockSheet = ({ onBack, onSaved }) => {
                     </tr>
                   ))}
                   <tr className="ss-total-row">
-                    <td><strong>Total</strong></td>
-                    <td><strong>{totalQty.toFixed(3)}</strong></td>
+                    <td>
+                      <strong>Total</strong>
+                    </td>
+                    <td>
+                      <strong>{totalQty.toFixed(3)}</strong>
+                    </td>
                     {showUnitColumn && <td></td>}
                   </tr>
                 </tbody>
@@ -416,7 +499,7 @@ const StockSheet = ({ onBack, onSaved }) => {
             onClick={handleSave}
             disabled={saving}
           >
-            {saving ? 'Saving…' : 'Save Stock Sheet'}
+            {saving ? "Saving…" : "Save Stock Sheet"}
           </button>
         </div>
       </div>
