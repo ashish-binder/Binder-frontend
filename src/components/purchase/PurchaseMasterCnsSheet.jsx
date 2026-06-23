@@ -4,10 +4,15 @@ import {
   getPurchaseGrid,
   previewVpo,
   issueVpo,
+  getJobWorkGrid,
+  previewJobWorkVpo,
+  issueJobWorkVpo,
 } from '../../services/integration';
 import { CATEGORY_CHIPS, TOP_TABS } from './columnSchemas';
 import PurchaseGrid from './PurchaseGrid';
+import JobWorkGrid from './JobWorkGrid';
 import VpoPreviewModal from './VpoPreviewModal';
+import JobWorkVpoPreviewModal from './JobWorkVpoPreviewModal';
 import StockUqrPanel from './StockUqrPanel';
 
 const orangeChip = (active) => ({
@@ -41,6 +46,16 @@ const PurchaseMasterCnsSheet = ({ ipo, onBack, onOpenVpoHistory }) => {
   const [issuing, setIssuing] = useState(false);
   const [stockPanelRow, setStockPanelRow] = useState(null);
 
+  // Job Work tab state (separate payload shape: { materials, work_orders }).
+  const [jobWork, setJobWork] = useState({ materials: [], work_orders: [] });
+  const [jwPreviewOpen, setJwPreviewOpen] = useState(false);
+  const [jwPreview, setJwPreview] = useState(null);
+  const [jwPreviewErrors, setJwPreviewErrors] = useState(null);
+  const [jwIssuing, setJwIssuing] = useState(false);
+  const [jwPending, setJwPending] = useState(null); // { work_order_type, process_unit, lines }
+
+  const isJobWork = tab === 'job_work';
+
   // Stale-while-revalidate cache so flipping between tabs/categories (or back
   // to one already viewed) renders instantly instead of waiting on the
   // (expensive) Master CNS recompute every time. Keyed by `${tab}:${category}`.
@@ -65,7 +80,8 @@ const PurchaseMasterCnsSheet = ({ ipo, onBack, onOpenVpoHistory }) => {
     // Show cached rows immediately (no spinner) and revalidate in the
     // background. Only show the loading state when we have nothing to show.
     if (cached && !force) {
-      setGrid(cached);
+      if (tab === 'job_work') setJobWork(cached);
+      else setGrid(cached);
       setLoading(false);
     } else {
       setLoading(true);
@@ -73,6 +89,22 @@ const PurchaseMasterCnsSheet = ({ ipo, onBack, onOpenVpoHistory }) => {
     setError('');
 
     try {
+      if (tab === 'job_work') {
+        const res = await getJobWorkGrid(ipoId, { category });
+        if (token !== reqToken.current) return;
+        if (res?.detail) {
+          setError(res.detail);
+          if (!cached) setJobWork({ materials: [], work_orders: [] });
+        } else {
+          const next = {
+            materials: res?.materials || [],
+            work_orders: res?.work_orders || [],
+          };
+          gridCache.current[key] = next;
+          setJobWork(next);
+        }
+        return;
+      }
       const res = await getPurchaseGrid(ipoId, { tab, category });
       if (token !== reqToken.current) return; // a newer request superseded this one
       if (res?.detail) {
@@ -173,6 +205,46 @@ const PurchaseMasterCnsSheet = ({ ipo, onBack, onOpenVpoHistory }) => {
     }
   };
 
+  // --- Job Work preview / issue ---
+  const openJobWorkPreview = async (meta, lines) => {
+    setJwPreviewErrors(null);
+    setJwPreview(null);
+    setJwPending({ ...meta, lines });
+    setJwPreviewOpen(true);
+    try {
+      const res = await previewJobWorkVpo(ipoId, { ...meta, lines });
+      if (res?.errors) {
+        setJwPreviewErrors(res.errors);
+        setJwPreview({ ipo, lines: [], ...meta });
+      } else {
+        setJwPreview(res);
+      }
+    } catch (err) {
+      setJwPreviewErrors([err?.message || 'Failed to preview Job Work VPO.']);
+    }
+  };
+
+  const handleIssueJobWorkVpo = async () => {
+    if (!jwPending || !jwPending.lines?.length) return;
+    setJwIssuing(true);
+    try {
+      const res = await issueJobWorkVpo(ipoId, jwPending);
+      if (res?.errors) {
+        setJwPreviewErrors(res.errors);
+      } else {
+        setJwPreviewOpen(false);
+        setJwPreview(null);
+        setJwPending(null);
+        gridCache.current = {}; // balances changed — drop cache and refetch fresh
+        loadGrid({ force: true });
+      }
+    } catch (err) {
+      setJwPreviewErrors([err?.message || 'Failed to generate Job Work VPO.']);
+    } finally {
+      setJwIssuing(false);
+    }
+  };
+
   return (
     <div className="dashboard-content">
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
@@ -185,7 +257,7 @@ const PurchaseMasterCnsSheet = ({ ipo, onBack, onOpenVpoHistory }) => {
             VPO History
           </Button>
           <Button type="button" variant="outline" onClick={onBack}>
-            ← Back to picker
+            ← Back to IPOs
           </Button>
         </div>
       </div>
@@ -252,7 +324,9 @@ const PurchaseMasterCnsSheet = ({ ipo, onBack, onOpenVpoHistory }) => {
         </div>
       )}
 
-      {/* Mode toggle + action buttons */}
+      {/* Mode toggle + action buttons (raw-material / artwork / packaging only —
+          Job Work issues a VPO per work-order table instead). */}
+      {!isJobWork && (
       <div
         style={{
           display: 'flex',
@@ -305,6 +379,7 @@ const PurchaseMasterCnsSheet = ({ ipo, onBack, onOpenVpoHistory }) => {
           )}
         </div>
       </div>
+      )}
 
       {error && (
         <div
@@ -324,6 +399,8 @@ const PurchaseMasterCnsSheet = ({ ipo, onBack, onOpenVpoHistory }) => {
 
       {loading ? (
         <div style={{ color: '#6b7280', padding: 24 }}>Loading grid…</div>
+      ) : isJobWork ? (
+        <JobWorkGrid data={jobWork} onGenerateVpo={openJobWorkPreview} />
       ) : (
         <PurchaseGrid
           rows={grid.rows}
@@ -337,6 +414,20 @@ const PurchaseMasterCnsSheet = ({ ipo, onBack, onOpenVpoHistory }) => {
           onLineItemUpdated={handleLineItemUpdated}
         />
       )}
+
+      <JobWorkVpoPreviewModal
+        open={jwPreviewOpen}
+        preview={jwPreview}
+        errors={jwPreviewErrors}
+        busy={jwIssuing}
+        onClose={() => {
+          setJwPreviewOpen(false);
+          setJwPreview(null);
+          setJwPreviewErrors(null);
+          setJwPending(null);
+        }}
+        onIssue={handleIssueJobWorkVpo}
+      />
 
       <VpoPreviewModal
         open={previewOpen}

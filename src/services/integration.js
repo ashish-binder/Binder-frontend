@@ -1464,6 +1464,32 @@ export const issueVpo = async (ipoId, lines) => {
   return await response.json();
 };
 
+// ---- Job Work -------------------------------------------------------------
+
+export const getJobWorkGrid = async (ipoId, { category } = {}) => {
+  const params = new URLSearchParams();
+  if (category) params.set('category', category);
+  const q = params.toString();
+  const response = await apiRequest(`ims/purchase/${ipoId}/job-work/${q ? `?${q}` : ''}`);
+  return await response.json();
+};
+
+export const previewJobWorkVpo = async (ipoId, body) => {
+  const response = await apiRequest(`ims/purchase/${ipoId}/job-work/vpo/preview/`, {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+  return await response.json();
+};
+
+export const issueJobWorkVpo = async (ipoId, body) => {
+  const response = await apiRequest(`ims/purchase/${ipoId}/job-work/vpo/issue/`, {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+  return await response.json();
+};
+
 export const getVpoHistory = async ({ ipoId, status } = {}) => {
   const params = new URLSearchParams();
   if (ipoId) params.set('ipo', ipoId);
