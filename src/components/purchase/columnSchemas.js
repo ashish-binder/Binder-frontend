@@ -33,6 +33,7 @@ const tail = [balanceCol, rateCol];
 
 export const TOP_TABS = [
   { key: 'raw_material', label: 'Raw Material' },
+  { key: 'job_work', label: 'Job Work' },
   { key: 'artwork', label: 'Artwork & Labeling' },
   { key: 'packaging', label: 'Packaging' },
 ];
@@ -44,6 +45,13 @@ export const CATEGORY_CHIPS = {
     { key: 'fiber', label: 'Fiber' },
     { key: 'foam', label: 'Foam' },
     { key: 'trims', label: 'Trims' },
+  ],
+  // Job Work applies only to the processable raw-material categories.
+  job_work: [
+    { key: 'yarn', label: 'Yarn' },
+    { key: 'fabric', label: 'Fabric' },
+    { key: 'fiber', label: 'Fiber' },
+    { key: 'foam', label: 'Foam' },
   ],
   artwork: [
     { key: 'law_label', label: 'Law Label' },

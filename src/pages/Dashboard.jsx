@@ -46,7 +46,21 @@ import {
 import './Dashboard.css';
 import { normalizeOrderType } from '../utils/orderType';
 
-const FingerprintScanIcon = ({ size = 18 }) => (
+const Stack3Icon = ({ size = 18 }) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="currentColor"
+    aria-hidden="true"
+  >
+    <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+    <path d="M20.894 17.553a1 1 0 0 1 -.447 1.341l-8 4a1 1 0 0 1 -.894 0l-8 -4a1 1 0 0 1 .894 -1.788l7.553 3.774l7.554 -3.775a1 1 0 0 1 1.341 .447m0 -4a1 1 0 0 1 -.447 1.341l-8 4a1 1 0 0 1 -.894 0l-8 -4a1 1 0 0 1 .894 -1.788l7.552 3.775l7.554 -3.775a1 1 0 0 1 1.341 .447m0 -4a1 1 0 0 1 -.447 1.341l-8 4a1 1 0 0 1 -.894 0l-8 -4a1 1 0 0 1 .894 -1.788l7.552 3.775l7.554 -3.775a1 1 0 0 1 1.341 .447m-8.887 -8.552q .056 0 .111 .007l.111 .02l.086 .024l.012 .006l.012 .002l.029 .014l.05 .019l.016 .009l.012 .005l8 4a1 1 0 0 1 0 1.788l-8 4a1 1 0 0 1 -.894 0l-8 -4a1 1 0 0 1 0 -1.788l8 -4l.011 -.005l.018 -.01l.078 -.032l.011 -.002l.013 -.006l.086 -.024l.11 -.02l.056 -.005z" />
+  </svg>
+);
+
+const NotepadPenIcon = ({ size = 18 }) => (
   <svg
     xmlns="http://www.w3.org/2000/svg"
     width={size}
@@ -60,27 +74,43 @@ const FingerprintScanIcon = ({ size = 18 }) => (
     aria-hidden="true"
   >
     <path stroke="none" d="M0 0h24v24H0z" fill="none" />
-    <path d="M9 11a3 3 0 0 1 6 0c0 1.657 .612 3.082 1 4" />
-    <path d="M12 11v1.75c-.001 1.11 .661 2.206 1 3.25" />
-    <path d="M9 14.25c.068 .58 .358 1.186 .5 1.75" />
-    <path d="M4 8v-2a2 2 0 0 1 2 -2h2" />
-    <path d="M4 16v2a2 2 0 0 0 2 2h2" />
-    <path d="M16 4h2a2 2 0 0 1 2 2v2" />
-    <path d="M16 20h2a2 2 0 0 0 2 -2v-2" />
+    <path d="M8 4h6v4h-6z" />
+    <path d="M18 6h1a1 1 0 0 1 1 1v3.5" />
+    <path d="M5 14v5a1 1 0 0 0 1 1h6.5" />
+    <path d="M4 6a1 1 0 0 1 1 -1h1" />
+    <path d="M4 6v4" />
+    <path d="M4 14v-1" />
+    <path d="M8 12h3" />
+    <path d="M8 16h2" />
+    <path d="M18.42 15.61a2.1 2.1 0 0 1 2.97 2.97l-3.39 3.42h-3v-3z" />
   </svg>
 );
 
-const Stack3Icon = ({ size = 18 }) => (
+const ScannerIcon = ({ size = 18 }) => (
   <svg
     xmlns="http://www.w3.org/2000/svg"
     width={size}
     height={size}
     viewBox="0 0 24 24"
-    fill="currentColor"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth={2}
+    strokeLinecap="round"
+    strokeLinejoin="round"
     aria-hidden="true"
   >
     <path stroke="none" d="M0 0h24v24H0z" fill="none" />
-    <path d="M20.894 17.553a1 1 0 0 1 -.447 1.341l-8 4a1 1 0 0 1 -.894 0l-8 -4a1 1 0 0 1 .894 -1.788l7.553 3.774l7.554 -3.775a1 1 0 0 1 1.341 .447m0 -4a1 1 0 0 1 -.447 1.341l-8 4a1 1 0 0 1 -.894 0l-8 -4a1 1 0 0 1 .894 -1.788l7.552 3.775l7.554 -3.775a1 1 0 0 1 1.341 .447m0 -4a1 1 0 0 1 -.447 1.341l-8 4a1 1 0 0 1 -.894 0l-8 -4a1 1 0 0 1 .894 -1.788l7.552 3.775l7.554 -3.775a1 1 0 0 1 1.341 .447m-8.887 -8.552q .056 0 .111 .007l.111 .02l.086 .024l.012 .006l.012 .002l.029 .014l.05 .019l.016 .009l.012 .005l8 4a1 1 0 0 1 0 1.788l-8 4a1 1 0 0 1 -.894 0l-8 -4a1 1 0 0 1 0 -1.788l8 -4l.011 -.005l.018 -.01l.078 -.032l.011 -.002l.013 -.006l.086 -.024l.11 -.02l.056 -.005z" />
+    <path d="M3 7v-1a2 2 0 0 1 2 -2h2" />
+    <path d="M3 17v1a2 2 0 0 0 2 2h2" />
+    <path d="M17 4h2a2 2 0 0 1 2 2v1" />
+    <path d="M17 20h2a2 2 0 0 0 2 -2v-1" />
+    <path d="M5 12h14" />
+    <path d="M8 9v-1" />
+    <path d="M11 9v-1" />
+    <path d="M14 9v-1" />
+    <path d="M8 16v-1" />
+    <path d="M11 16v-1" />
+    <path d="M14 16v-1" />
   </svg>
 );
 
@@ -100,28 +130,6 @@ const ShoppingBagIcon = ({ size = 18 }) => (
     <path stroke="none" d="M0 0h24v24H0z" fill="none" />
     <path d="M6.331 8h11.339a2 2 0 0 1 1.977 2.304l-1.255 8.152a3 3 0 0 1 -2.966 2.544h-6.852a3 3 0 0 1 -2.965 -2.544l-1.255 -8.152a2 2 0 0 1 1.977 -2.304" />
     <path d="M9 11v-5a3 3 0 0 1 6 0v5" />
-  </svg>
-);
-
-const ReceiptIcon = ({ size = 18 }) => (
-  <svg
-    xmlns="http://www.w3.org/2000/svg"
-    width={size}
-    height={size}
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth={2}
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    aria-hidden="true"
-  >
-    <path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1Z" />
-    {/* Rupee symbol: two horizontal bars, P-loop descender, and diagonal slash */}
-    <path d="M8 7h8" />
-    <path d="M8 10h8" />
-    <path d="M8 13h2c4.5 0 4.5-6 0-6" />
-    <path d="M8 13l6 5" />
   </svg>
 );
 
@@ -152,6 +160,7 @@ const Dashboard = () => {
   const [codeCreationView, setCodeCreationView] = useState(null);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [hoveredMenu, setHoveredMenu] = useState(null);
   const [hoveredSubmenu, setHoveredSubmenu] = useState(null);
   const [existingIPOs, setExistingIPOs] = useState([]);
@@ -221,6 +230,23 @@ const Dashboard = () => {
     }
   }, [user?.tenant_details?.onboarding_completed, navigate]);
 
+  // Intercept the browser back button on the dashboard. Instead of leaving for
+  // the login page, ask the user whether they want to log out.
+  useEffect(() => {
+    // Seed an extra history entry so the first back press fires popstate
+    // without navigating away from the dashboard.
+    window.history.pushState(null, '', window.location.href);
+
+    const handlePopState = () => {
+      // Re-seed the entry so we stay put, then surface the logout prompt.
+      window.history.pushState(null, '', window.location.href);
+      setShowLogoutConfirm(true);
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
   const isOperator = (value) => ['+', '-', '*', '/'].includes(value);
 
   const appendCalcValue = (value) => {
@@ -285,9 +311,9 @@ const Dashboard = () => {
   const getMenuItems = () => {
     return [
       { id: 'home', label: 'Home', icon: Home },
-      { id: 'tasks', label: 'Tasks', icon: Stack3Icon },
-      { id: 'code-creation', label: 'Code Creation', icon: FingerprintScanIcon },
-      { id: 'ipo-management', label: 'IPO Management', icon: ReceiptIcon },
+      { id: 'tasks', label: 'Tasks', icon: NotepadPenIcon },
+      { id: 'code-creation', label: 'Code Creation', icon: ScannerIcon },
+      { id: 'ipo-management', label: 'IPO Management', icon: Stack3Icon },
       { id: 'purchase', label: 'Purchase', icon: ShoppingBagIcon },
       { id: 'ims', label: 'IMS', icon: StorefrontIcon },
     ];
@@ -1763,6 +1789,45 @@ const Dashboard = () => {
               disabled={isDeletingIpo}
             >
               {isDeletingIpo ? 'Deleting…' : 'Delete'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={showLogoutConfirm}
+        onOpenChange={(open) => {
+          if (!open) setShowLogoutConfirm(false);
+        }}
+      >
+        <DialogContent
+          className="sm:max-w-md"
+          style={{ padding: '28px 32px', gap: '20px' }}
+        >
+          <DialogHeader className="gap-3" style={{ paddingRight: '24px' }}>
+            <DialogTitle>Log out?</DialogTitle>
+            <DialogDescription className="leading-relaxed">
+              Do you want to log out? Click <span className="font-semibold text-foreground">Yes</span> to
+              log out, or <span className="font-semibold text-foreground">No</span> to stay on this page.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-3 sm:gap-3" style={{ paddingTop: '8px' }}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setShowLogoutConfirm(false)}
+            >
+              No
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={() => {
+                setShowLogoutConfirm(false);
+                handleLogout();
+              }}
+            >
+              Yes
             </Button>
           </DialogFooter>
         </DialogContent>

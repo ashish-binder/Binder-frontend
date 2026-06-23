@@ -5888,12 +5888,12 @@ const GenerateFactoryCode = ({
         </div>
         
         <div className="mt-6">
-          <h1 className="text-3xl font-semibold tracking-tight text-foreground mb-1">
+          {/* <h1 className="text-3xl font-semibold tracking-tight text-foreground mb-1">
             Generate Factory Code
-          </h1>
-          <p className="text-sm text-muted-foreground">
+          </h1> */}
+          {/* <p className="text-sm text-muted-foreground">
             Complete all steps to generate a factory code
-          </p>
+          </p> */}
         </div>
       </div>
 
