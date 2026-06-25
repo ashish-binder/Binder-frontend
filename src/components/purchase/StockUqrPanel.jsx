@@ -20,7 +20,7 @@ const panelStyle = {
   boxShadow: '-12px 0 30px rgba(15, 23, 42, 0.18)',
 };
 
-const StockUqrPanel = ({ open, ipoId, row, onClose, onIssued }) => {
+const StockUqrPanel = ({ open, ipoId, row, category, onClose, onIssued }) => {
   const [stock, setStock] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -37,6 +37,7 @@ const StockUqrPanel = ({ open, ipoId, row, onClose, onIssued }) => {
       try {
         const res = await getStockLookup({
           ipo: ipoId,
+          category,
           material: row.material_description?.slice(0, 32),
         });
         if (!cancelled) setStock(res?.results || []);
@@ -50,7 +51,7 @@ const StockUqrPanel = ({ open, ipoId, row, onClose, onIssued }) => {
     return () => {
       cancelled = true;
     };
-  }, [open, row, ipoId]);
+  }, [open, row, ipoId, category]);
 
   if (!open) return null;
 

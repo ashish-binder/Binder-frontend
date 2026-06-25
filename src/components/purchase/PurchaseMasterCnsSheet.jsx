@@ -31,6 +31,21 @@ const MODE_OPTIONS = [
   { key: 'issue_stock', label: 'Issue Stock Qty to IPO' },
 ];
 
+// Maps the Purchase grid's (tab, category-chip) to the StockSheet category key
+// so the Stock & UQR check matches stock saved in the Master Stock Sheet.
+const RAW_TO_STOCK_CATEGORY = {
+  yarn: 'YARN',
+  fabric: 'FABRIC',
+  fiber: 'FIBER',
+  foam: 'FOAM',
+  trims: 'TRIMS_ACCESSORY',
+};
+const stockCategoryFor = (tab, category) => {
+  if (tab === 'artwork') return 'ARTWORK_LABELLING';
+  if (tab === 'packaging') return 'PACKAGING';
+  return RAW_TO_STOCK_CATEGORY[category] || '';
+};
+
 const PurchaseMasterCnsSheet = ({ ipo, onBack, onOpenVpoHistory }) => {
   const ipoId = ipo?.id;
   const [tab, setTab] = useState('raw_material');
@@ -446,6 +461,7 @@ const PurchaseMasterCnsSheet = ({ ipo, onBack, onOpenVpoHistory }) => {
         open={Boolean(stockPanelRow)}
         ipoId={ipoId}
         row={stockPanelRow}
+        category={stockCategoryFor(tab, category)}
         onClose={() => setStockPanelRow(null)}
         onIssued={() => {
           setStockPanelRow(null);
