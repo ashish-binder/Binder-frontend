@@ -15,6 +15,12 @@ import SetPassword from './pages/SetPassword';
 import Chatbot from './components/Chatbot';
 import Status from './pages/Status';
 
+const LoadingScreen = () => (
+  <div className="loading-screen">
+    <div>Loading...</div>
+  </div>
+);
+
 // Global chatbot — only shown when user is authenticated
 const GlobalChatbot = () => {
   const { isAuthenticated, loading } = useAuth();
@@ -26,19 +32,33 @@ const GlobalChatbot = () => {
 const ProtectedRoute = ({ children }) => {
   const { isAuthenticated, loading } = useAuth();
 
-  if (loading) {
-    return (
-      <div className="loading-screen">
-        <div>Loading...</div>
-      </div>
-    );
-  }
+  if (loading) return <LoadingScreen />;
 
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
   }
 
   return children;
+};
+
+const PublicOnlyRoute = ({ children }) => {
+  const { isAuthenticated, loading } = useAuth();
+
+  if (loading) return <LoadingScreen />;
+
+  if (isAuthenticated) {
+    return <Navigate to="/dashboard" replace />;
+  }
+
+  return children;
+};
+
+const AuthAwareRedirect = () => {
+  const { isAuthenticated, loading } = useAuth();
+
+  if (loading) return <LoadingScreen />;
+
+  return <Navigate to={isAuthenticated ? '/dashboard' : '/login'} replace />;
 };
 
 const Unauthorized = () => (
@@ -55,12 +75,12 @@ function App() {
       <AuthProvider>
         <LoadingProvider>
         <Routes>
-          <Route path="/login" element={<Login />} />
-          <Route path="/register-company" element={<RegisterCompany />} />
-          <Route path="/set-password" element={<SetPassword />} />
-          <Route path="/unauthorized" element={<Unauthorized />} />
-          <Route path="/essentials/view/:token" element={<EssentialsViewPage />} />
-          <Route path="/status" element={<Status />} />
+          <Route path="/login" element={<PublicOnlyRoute><Login /></PublicOnlyRoute>} />
+          <Route path="/register-company" element={<PublicOnlyRoute><RegisterCompany /></PublicOnlyRoute>} />
+          <Route path="/set-password" element={<PublicOnlyRoute><SetPassword /></PublicOnlyRoute>} />
+          <Route path="/unauthorized" element={<ProtectedRoute><Unauthorized /></ProtectedRoute>} />
+          <Route path="/essentials/view/:token" element={<ProtectedRoute><EssentialsViewPage /></ProtectedRoute>} />
+          <Route path="/status" element={<ProtectedRoute><Status /></ProtectedRoute>} />
           <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
           <Route path="/company-profile" element={<ProtectedRoute><CompanyProfile /></ProtectedRoute>} />
           <Route path="/onboarding" element={<ProtectedRoute><Onboarding /></ProtectedRoute>} />
@@ -84,9 +104,25 @@ function App() {
               </ProtectedRoute>
             }
           />
+          <Route
+            path="/dashboard/:section"
+            element={
+              <ProtectedRoute>
+                <Dashboard />
+              </ProtectedRoute>
+            }
+          />
           
           <Route
             path="/admin/dashboard"
+            element={
+              <ProtectedRoute>
+                <Dashboard />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/dashboard/:section"
             element={
               <ProtectedRoute>
                 <Dashboard />
@@ -102,6 +138,14 @@ function App() {
               </ProtectedRoute>
             }
           />
+          <Route
+            path="/manager/dashboard/:section"
+            element={
+              <ProtectedRoute>
+                <Dashboard />
+              </ProtectedRoute>
+            }
+          />
           
           <Route
             path="/tenant/dashboard"
@@ -111,9 +155,18 @@ function App() {
               </ProtectedRoute>
             }
           />
+          <Route
+            path="/tenant/dashboard/:section"
+            element={
+              <ProtectedRoute>
+                <Dashboard />
+              </ProtectedRoute>
+            }
+          />
           
           {/* Default Route */}
-          <Route path="/" element={<Navigate to="/login" replace />} />
+          <Route path="/" element={<AuthAwareRedirect />} />
+          <Route path="*" element={<AuthAwareRedirect />} />
         </Routes>
         <GlobalChatbot />
         <GlobalLoadingOverlay />
