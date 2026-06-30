@@ -3,7 +3,6 @@ import { Button } from '@/components/ui/button';
 import { ChevronDown } from 'lucide-react';
 import SearchableDropdown from '../SearchableDropdown';
 import PackagingMaterialTypeFields from '../PackagingMaterialTypeFields';
-import { TestingRequirementsInput } from '@/components/ui/testing-requirements-input';
 import { cn } from '@/lib/utils';
 
 const PACKAGING_MATERIAL_TYPE_OPTIONS = [
@@ -56,7 +55,6 @@ const Step5 = ({
     return [String(v)];
   })();
   const isStandalone = (formData.packaging?.toBeShipped || '').toLowerCase() === 'standalone';
-  const isMerged = (formData.packaging?.toBeShipped || '').toLowerCase() === 'merged';
   const extraPacks = formData.packaging?.extraPacks || [];
 
   useEffect(() => {
@@ -78,40 +76,6 @@ const Step5 = ({
     prevMaterialsLengthRef.current = currentMaterialsLength;
   }, [formData.packaging?.materials?.length]);
 
-  // Normalize values for chip-style multi-select fields.
-  // Keeps backward compatibility if old data stored a single string.
-  const asArray = (value) => {
-    if (Array.isArray(value)) return value;
-    if (value === undefined || value === null) return [];
-    const v = String(value).trim();
-    return v ? [v] : [];
-  };
-
-  // Best-effort parsing for legacy single-field dimension strings like:
-  // - "L x W x H" (Carton/Foam)
-  // - "W x L (x G)" (Polybag flap)
-  const extractNumbers = (value) => {
-    if (!value) return [];
-    const matches = String(value).match(/(\\d+(\\.\\d+)?)/g);
-    return matches || [];
-  };
-
-  const parseTripletDimensions = (value) => {
-    const nums = extractNumbers(value);
-    return {
-      length: nums[0] || '',
-      width: nums[1] || '',
-      height: nums[2] || '',
-    };
-  };
-
-  const parsePairDimensions = (value) => {
-    const nums = extractNumbers(value);
-    return {
-      width: nums[0] || '',
-      length: nums[1] || '',
-    };
-  };
 
   // IPC options from this session only: IPCs created in Step 0 for this runtime (main + subproducts, with images)
   const getIpcOptionsWithImages = () => {

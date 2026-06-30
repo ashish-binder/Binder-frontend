@@ -26,14 +26,6 @@ const parseTripletDimensions = (value) => {
   };
 };
 
-const parsePairDimensions = (value) => {
-  const nums = extractNumbers(value);
-  return {
-    width: nums[0] || '',
-    length: nums[1] || '',
-  };
-};
-
 const CARTON_PLY_OPTIONS = ['3 Ply', '5 Ply', '7 Ply', '9 Ply'];
 const SHIPPING_MARK_TYPE_OPTIONS = [
   'Adhesive Sticker (on packaging/hang tag)',

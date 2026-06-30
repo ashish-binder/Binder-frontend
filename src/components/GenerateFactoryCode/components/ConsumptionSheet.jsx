@@ -1,10 +1,18 @@
-import React, { useMemo, useState, useEffect, forwardRef, useImperativeHandle } from 'react';
+import { useMemo, useState, useEffect, forwardRef, useImperativeHandle } from 'react';
 import { TRIM_ACCESSORY_SCHEMAS } from '@/utils/validationSchemas';
-import {
-  isQualityYes,
-  mapArtworkCategoryToFormKey,
-  mapRawMaterialToFormKey,
-} from '@/utils/uqrMappings';
+import { isQualityYes, mapArtworkCategoryToFormKey, mapRawMaterialToFormKey } from '@/utils/uqrMappings';
+
+// Explicit column templates for the desktop CNS tables. Equal columns made the
+// (now longer, slash-joined) MATERIAL DESCRIPTION too narrow, so it overflowed
+// into the next column. These give the description column real width while
+// keeping every track shrinkable (minmax(0,…)) so text wraps instead of bleeding.
+const RAW_MAT_GRID =
+  'minmax(0,1.2fr) minmax(0,2.8fr) minmax(0,0.9fr) minmax(0,1fr) minmax(0,0.9fr) minmax(0,1.1fr) minmax(0,1.1fr) minmax(0,1.1fr) minmax(0,0.7fr)';
+const PKG_STD_GRID =
+  'minmax(0,1.1fr) minmax(0,2.6fr) minmax(0,1.3fr) minmax(0,1.4fr) minmax(0,1.1fr) minmax(0,0.9fr) minmax(0,1fr) minmax(0,1.1fr)';
+// Reusable wrap rule for free-text cells: lets the flex child shrink and break
+// long unspaced tokens (e.g. "muslin/100%Cotton/220GSM/…") so it never overflows.
+const CELL_WRAP = 'min-w-0 break-words [overflow-wrap:anywhere]';
 
 const ARTWORK_DESCRIPTION_FIELD_MAP = {
   'LABELS (BRAND/MAIN)': {
@@ -313,22 +321,6 @@ const ConsumptionSheet = forwardRef(({ formData = {}, isEditMode = false, onEdit
       return sum + wastageVal;
     }, 0);
     return total.toFixed(2);
-  };
-
-  // Helper: Sum wastage/surplus values (no compounding)
-  // const calculateTotalWastage = (wastageList) => {
-  //   if (!wastageList || wastageList.length === 0) return '0.00';
-  //   const total = wastageList.reduce((sum, w) => {
-  //     const wastageVal = parseFloat(String(w).replace('%', '')) || 0;
-  //     return sum + wastageVal;
-  //   }, 0);
-  //   return total.toFixed(2);
-  // };
-
-  // Helper: Calculate net consumption (sum of all consumptions)
-  const calculateNetConsumption = (consumptions) => {
-    if (!consumptions || consumptions.length === 0) return 0;
-    return consumptions.reduce((sum, c) => sum + (parseFloat(c) || 0), 0).toFixed(3);
   };
 
   // Helper: Calculate compound factor directly from wastage list (avoids precision loss from rounding)
@@ -746,61 +738,8 @@ const ConsumptionSheet = forwardRef(({ formData = {}, isEditMode = false, onEdit
     return mergedItems;
   };
 
-  // Helper: Get work orders for a component from Step-2 rawMaterials
-  const getWorkOrdersForComponent = (componentName, stepData) => {
-    const rawMats = getRawMaterialsForComponent(componentName, stepData);
-    const workOrders = [];
 
-    rawMats.forEach((m) => {
-      m.workOrders?.forEach((wo) => {
-        if (wo.workOrder) {
-          workOrders.push({
-            workOrder: wo.workOrder,
-            wastage: wo.wastage
-          });
-        }
-      });
-    });
 
-    return workOrders;
-  };
-
-  // Helper: Get total net CNS for a component from Step-2, Step-3 AND Step-4 (used only where full total is needed)
-  const getTotalNetCNS = (componentName, stepData, productComponents) => {
-    const consumptions = [];
-    const artworkFallbackCasepack = parseNumericValue(getPackagingConfigForProduct(stepData, formData)?.casepackQty);
-
-    const rawMats = getRawMaterialsForComponent(componentName, stepData);
-    rawMats.forEach((m) => {
-      const stitching = getStitchingThreadNetCnsAndUnit(m);
-      if (stitching !== null && stitching.netCns != null) consumptions.push(stitching.netCns);
-      else if (m.netConsumption) consumptions.push(m.netConsumption);
-    });
-
-    const consumptionMats = getConsumptionMaterialsForComponent(componentName, stepData, productComponents);
-    consumptionMats.forEach((m) => {
-      if (m.netConsumption) consumptions.push(m.netConsumption);
-    });
-
-    const artworkMats = getArtworkMaterialsForComponent(componentName, stepData);
-    artworkMats.forEach((m) => {
-      const n = getArtworkEffectiveNetCns(m, artworkFallbackCasepack);
-      if (n) consumptions.push(n);
-    });
-
-    return calculateNetConsumption(consumptions);
-  };
-
-  // Helper: Get net CNS from raw materials only (Step-2) for the Raw Material row – isolated from consumption/artwork
-  const getRawMaterialsOnlyNetCNS = (componentName, stepData) => {
-    const rawMats = getRawMaterialsForComponent(componentName, stepData);
-    const consumptions = rawMats.map((m) => {
-      const stitching = getStitchingThreadNetCnsAndUnit(m);
-      if (stitching !== null) return stitching.netCns;
-      return m.netConsumption ? parseFloat(m.netConsumption) : null;
-    }).filter((v) => v != null && !isNaN(v));
-    return calculateNetConsumption(consumptions);
-  };
 
   // Known wastage/surplus keys on a raw material (Step-2): foam, fiber, fabric, trim&accessory, yarn categories + work orders.
   // Explicit list so we never miss a category; extractAllWastages(m) still runs to catch any nested or future keys.
@@ -813,10 +752,6 @@ const ConsumptionSheet = forwardRef(({ formData = {}, isEditMode = false, onEdit
     'fiberSurplus', 'fiberWastage',
     'stitchingThreadSurplus', 'stitchingThreadWastage',
   ];
-
-  const pushIfPresent = (list, value) => {
-    if (value !== undefined && value !== null && value !== '') list.push(value);
-  };
 
   // Human-readable labels for raw material wastage/surplus keys (for trace/breakdown)
   const RAW_MATERIAL_WASTAGE_LABELS = {
@@ -913,79 +848,9 @@ const ConsumptionSheet = forwardRef(({ formData = {}, isEditMode = false, onEdit
     return breakdown;
   };
 
-  // Extract all wastage/surplus from one raw material: 5 categories (foam, fiber, fabric, trim&accessory, yarn) + work orders
-  const extractRawMaterialWastagesSurplus = (material, wastageList) => {
-    RAW_MATERIAL_WASTAGE_SURPLUS_KEYS.forEach((key) => {
-      if (material[key] !== undefined) pushIfPresent(wastageList, material[key]);
-    });
-    getTrimAccessoryWastageValues(material).forEach(({ value }) => pushIfPresent(wastageList, value));
-    (material.workOrders || []).forEach((wo) => extractAllWastages(wo, wastageList));
-  };
 
-  // Helper: Get wastage/surplus values for raw materials only (Step-1 component + Step-2 raw) for Raw Material row calculations.
-  // Step-2: from each raw material, all nested forms (foam, fiber, fabric, trim&accessory, yarn) and work orders – no Step-3/Step-4.
-  const getAllWastagesForRawMaterialsOnly = (componentName, stepData, productComponents) => {
-    const wastageValues = [];
 
-    // Step-1: Component-level wastage
-    for (const comp of productComponents || []) {
-      if (comp.productComforter === componentName && comp.wastage) {
-        wastageValues.push(comp.wastage);
-        break;
-      }
-    }
 
-    const rawMats = getRawMaterialsForComponent(componentName, stepData);
-    rawMats.forEach((m) => extractRawMaterialWastagesSurplus(m, wastageValues));
-
-    return wastageValues;
-  };
-
-  // Helper: Get ALL wastage/surplus values for compound calculation (Step-1, Step-2, Step-3, Step-4)
-  const getAllWastagesForComponent = (componentName, stepData, productComponents) => {
-    const wastageValues = [];
-
-    // Step-1: Component-level wastage
-    for (const comp of productComponents || []) {
-      if (comp.productComforter === componentName && comp.wastage) {
-        wastageValues.push(comp.wastage);
-        break;
-      }
-    }
-
-    // Step-2: Raw materials (includes work order wastages via extractAllWastages)
-    const rawMats = getRawMaterialsForComponent(componentName, stepData);
-    rawMats.forEach((m) => extractAllWastages(m, wastageValues));
-
-    // Step-3: Consumption materials (trims, accessories - velcroWastage, buttonWastage, etc.)
-    const consumptionMats = getConsumptionMaterialsForComponent(componentName, stepData, productComponents);
-    consumptionMats.forEach((m) => extractAllWastages(m, wastageValues));
-
-    // Step-4: Artwork materials (with category-specific surplus extraction)
-    const artworkMats = getArtworkMaterialsForComponent(componentName, stepData);
-    artworkMats.forEach((m) => {
-      // Extract general wastage/surplus
-      extractAllWastages(m, wastageValues);
-      // Extract category-specific surplus
-      const artworkWastageSurplus = extractArtworkWastageSurplus(m);
-      wastageValues.push(...artworkWastageSurplus);
-    });
-
-    return wastageValues;
-  };
-
-  // Helper: Get ALL wastage/surplus values for packaging materials (main + extraPacks)
-  const getAllWastagesForPackaging = (stepData, formData) => {
-    const wastageValues = [];
-    const blocks = getAllPackagingBlocks(formData ?? {}, stepData);
-    blocks.forEach((b) => {
-      (b.materials || []).forEach((m) => {
-        const packagingWastageSurplus = extractPackagingWastageSurplus(m);
-        wastageValues.push(...packagingWastageSurplus);
-      });
-    });
-    return wastageValues;
-  };
 
   // Helper: Get unit for a component from rawMaterials
   const getUnitForComponent = (componentName, stepData) => {
@@ -996,11 +861,6 @@ const ConsumptionSheet = forwardRef(({ formData = {}, isEditMode = false, onEdit
     return 'CM';
   };
 
-  // Helper: Get material types for a component from rawMaterials
-  const getMaterialTypes = (componentName, stepData) => {
-    const rawMats = getRawMaterialsForComponent(componentName, stepData);
-    return rawMats.filter((m) => m.materialType).map((m) => m.materialType);
-  };
 
   // Helper: Get component details from Step-1 products (cutting size, sew size)
   const getComponentDetails = (componentName, productComponents) => {
@@ -1533,14 +1393,14 @@ const ConsumptionSheet = forwardRef(({ formData = {}, isEditMode = false, onEdit
 
       return (
         <div key={matIdx} className="min-w-0 border-b border-border">
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-9 min-w-0">
+          <div className="grid min-w-0" style={{ gridTemplateColumns: RAW_MAT_GRID }}>
             <div className={row4Cell} style={desktopTableCell}>
-              <div className="flex items-start gap-2">
+              <div className="flex items-start gap-2 min-w-0">
                 <span className="text-xs font-semibold text-muted-foreground">{matIdx + 1}.</span>
-                <span className="text-sm text-foreground break-words">{material.materialType || '-'}</span>
+                <span className={`text-sm text-foreground ${CELL_WRAP}`}>{material.materialType || '-'}</span>
               </div>
             </div>
-            <div className={row4Cell} style={desktopTableCell}><span className="text-sm text-foreground break-words">{material.materialDescription || '-'}</span></div>
+            <div className={row4Cell} style={desktopTableCell}><span className={`text-sm text-foreground ${CELL_WRAP}`}>{material.materialDescription || '-'}</span></div>
             <div className={row4Cell} style={desktopTableCell}><span className="text-base font-bold text-foreground">{matNetCns || '-'}</span></div>
             <div className={row4Cell} style={desktopTableCell}><span className="text-base font-bold text-foreground">{overageQty}</span></div>
             <div className={row4Cell} style={desktopTableCell}><span className="text-base font-bold text-foreground">{matTotalWastage}%</span></div>
@@ -1572,7 +1432,7 @@ const ConsumptionSheet = forwardRef(({ formData = {}, isEditMode = false, onEdit
             <div className={row4Cell} style={desktopTableCell}>
               <div className="flex items-start gap-2">
                 <span className="text-xs font-semibold text-muted-foreground">{matIdx + 1}.</span>
-                <span className="text-sm text-foreground break-words">{label}</span>
+                <span className={`text-sm text-foreground ${CELL_WRAP}`}>{label}</span>
               </div>
             </div>
             <div className={row4Cell} style={desktopTableCell}><span className="text-base font-bold text-foreground">{netCns ?? '-'}</span></div>
@@ -1764,7 +1624,7 @@ Gross Wastage % = ((1+w1/100) × (1+w2/100) × ... − 1) × 100`, { size: 'sm' 
               </div>
             ) : (
               <div className="min-w-0">
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-9 min-w-0 border-b border-border bg-muted/30">
+                <div className="grid min-w-0 border-b border-border bg-muted/30" style={{ gridTemplateColumns: RAW_MAT_GRID }}>
                   <div className={row4Cell} style={desktopHeaderCell}>
                     <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider inline-flex items-center gap-2">
                       Raw Material {renderInfoIcon('Each row is a raw material; its work orders are listed below')}
@@ -2028,7 +1888,7 @@ Gross Wastage % = ((1+w1/100) × (1+w2/100) × ... − 1) × 100`)}
                   const artLastClass = 'min-w-0 border-border bg-muted/5';
                   return (
                     <div key={idx} className="grid grid-cols-2 sm:grid-cols-7 min-w-0 border-b border-border last:border-b-0">
-                      <div className={artCellClass} style={desktopTableCell}><span className="text-sm text-foreground break-words whitespace-pre-line">{getArtworkDescription(artwork) || '-'}</span></div>
+                      <div className={artCellClass} style={desktopTableCell}><span className={`text-sm text-foreground whitespace-pre-line ${CELL_WRAP}`}>{getArtworkDescription(artwork) || '-'}</span></div>
                       <div className={artCellClass} style={desktopTableCell}><span className="text-base font-bold text-foreground">{getArtworkQtyWithUnit(artwork) || '-'}</span></div>
                       <div className={artCellClass} style={desktopTableCell}><span className="text-base font-bold text-foreground">{formatCasepackDisplay(artworkCasepack)}</span></div>
                       <div className={artCellClass} style={desktopTableCell}><span className="text-base font-bold text-foreground">{artworkCompoundWastage}%</span></div>
@@ -2110,7 +1970,7 @@ Gross Wastage % = ((1+w1/100) × (1+w2/100) × ... − 1) × 100`)}
           <div className="min-w-0 rounded-lg border border-border overflow-hidden bg-card">
           {standardMats.length > 0 && (
             <>
-              <div className="grid grid-cols-8 min-w-0 border-b border-border bg-muted/30">
+              <div className="grid min-w-0 border-b border-border bg-muted/30" style={{ gridTemplateColumns: PKG_STD_GRID }}>
                 <div className={row4Cell} style={desktopHeaderCell}><span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Mat</span></div>
                 <div className={row4Cell} style={desktopHeaderCell}><span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Mat Desc</span></div>
                 <div className={row4Cell} style={desktopHeaderCell}><span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Size</span></div>
@@ -2135,11 +1995,11 @@ Gross Wastage % = ((1+w1/100) × (1+w2/100) × ... − 1) × 100`)}
                 const wastagePercent = parseFloat(packagingCompoundWastage) || 0;
                 const grossTotalMatReq = reqMatNum !== '-' && !isNaN(reqMatNum) ? Math.floor((reqMatNum + (reqMatNum * wastagePercent / 100)) + 0.6) : '-';
                 return (
-                  <div key={`std-${idx}`} className="grid grid-cols-8 min-w-0 border-b border-border last:border-b-0">
-                    <div className={row4Cell} style={desktopTableCell}><span className="text-sm text-foreground break-words">{matType || '-'}</span></div>
-                    <div className={row4Cell} style={desktopTableCell}><span className="text-sm text-foreground break-words whitespace-pre-line">{matDesc || '-'}</span></div>
-                    <div className={row4Cell} style={desktopTableCell}><span className="text-sm text-foreground break-words">{matSize || '-'}</span></div>
-                    <div className={row4Cell} style={desktopTableCell}><span className="text-sm text-foreground break-words">{ipcsDisplay || '-'}</span></div>
+                  <div key={`std-${idx}`} className="grid min-w-0 border-b border-border last:border-b-0" style={{ gridTemplateColumns: PKG_STD_GRID }}>
+                    <div className={row4Cell} style={desktopTableCell}><span className={`text-sm text-foreground ${CELL_WRAP}`}>{matType || '-'}</span></div>
+                    <div className={row4Cell} style={desktopTableCell}><span className={`text-sm text-foreground whitespace-pre-line ${CELL_WRAP}`}>{matDesc || '-'}</span></div>
+                    <div className={row4Cell} style={desktopTableCell}><span className={`text-sm text-foreground ${CELL_WRAP}`}>{matSize || '-'}</span></div>
+                    <div className={row4Cell} style={desktopTableCell}><span className={`text-sm text-foreground ${CELL_WRAP}`}>{ipcsDisplay || '-'}</span></div>
                     <div className={row4Cell} style={desktopTableCell}><span className="text-base font-bold text-foreground">{packagingCompoundWastage}%</span></div>
                     <div className={row4Cell} style={desktopTableCell}><span className="text-base font-bold text-foreground">{matCasepack || '-'}</span></div>
                     <div className={row4Cell} style={desktopTableCell}><span className="text-base font-bold text-primary">{reqMat}</span></div>
@@ -2170,8 +2030,8 @@ Gross Wastage % = ((1+w1/100) × (1+w2/100) × ... − 1) × 100`)}
                   <div className={row4Last} style={desktopHeaderCell}><span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Wastage/Surplus</span></div>
                 </div>
                 <div className="grid grid-cols-4 min-w-0 border-b border-border">
-                  <div className={row4Cell} style={desktopTableCell}><span className="text-sm text-foreground break-words">{formatPackagingTypeName(packaging.packagingMaterialType) || '-'}</span></div>
-                  <div className={row4Cell} style={desktopTableCell}><span className="text-sm text-foreground break-words whitespace-pre-line">{matDesc || '-'}</span></div>
+                  <div className={row4Cell} style={desktopTableCell}><span className={`text-sm text-foreground ${CELL_WRAP}`}>{formatPackagingTypeName(packaging.packagingMaterialType) || '-'}</span></div>
+                  <div className={row4Cell} style={desktopTableCell}><span className={`text-sm text-foreground whitespace-pre-line ${CELL_WRAP}`}>{matDesc || '-'}</span></div>
                   <div className={row4Cell} style={desktopTableCell}><span className="text-base font-bold text-foreground">{matCasepack || '-'}</span></div>
                   <div className={row4Last} style={desktopTableCell}><span className="text-base font-bold text-foreground">{packagingCompoundWastage}%</span></div>
                 </div>

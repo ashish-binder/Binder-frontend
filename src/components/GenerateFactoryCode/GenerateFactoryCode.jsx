@@ -1,31 +1,11 @@
 import { useState, useEffect, useRef } from 'react';
 import { useSidebar, SIDEBAR_WIDTH_COLLAPSED, SIDEBAR_WIDTH_EXPANDED } from '@/context/SidebarContext';
-import TEXTILE_FIBER_DATA from './data/textileFiberData';
-import { getFiberTypes, getYarnTypes, getSpinningMethod, getYarnDetails } from './utils/yarnHelpers';
-import { initializeRawMaterials, initializeConsumptionMaterials } from './utils/initializers';
 import { generateMaterialDescription, getDescriptionSourceFields, isAutoDescriptionType, generateArtworkDescription, getArtworkDescriptionSourceFields, generatePackagingDescription, getPackagingDescriptionSourceFields } from './utils/materialDescription';
-import { calculateTotalWastage, calculateGrossConsumption } from './utils/calculations';
-import { isShrinkageWidthApplicable, isShrinkageLengthApplicable, DYEING_TYPES } from './data/dyeingData';
-import {
-  FABRIC_SCHEMA,
-  YARN_BASE_SCHEMA,
-  STITCHING_THREAD_SCHEMA,
-  WORK_ORDER_SCHEMAS,
-  TRIM_ACCESSORY_SCHEMAS,
-  FOAM_SCHEMAS,
-  FIBER_SCHEMAS,
-  ARTWORK_SCHEMAS,
-  PACKAGING_HEADER_SCHEMA,
-  PACKAGING_COMMON_SCHEMA,
-  PACKAGING_MATERIAL_SCHEMAS,
-  isEmpty,
-  validateMaterialAgainstSchema
-} from '@/utils/validationSchemas';
-import { SIMPLE_REQUIREMENT_WORK_ORDERS } from '@/utils/workOrderOptions';
+import { isShrinkageWidthApplicable, isShrinkageLengthApplicable } from './data/dyeingData';
+import { FABRIC_SCHEMA, YARN_BASE_SCHEMA, STITCHING_THREAD_SCHEMA, WORK_ORDER_SCHEMAS, TRIM_ACCESSORY_SCHEMAS, FOAM_SCHEMAS, FIBER_SCHEMAS, ARTWORK_SCHEMAS, PACKAGING_MATERIAL_SCHEMAS, isEmpty, validateMaterialAgainstSchema } from '@/utils/validationSchemas';
 import Step0 from './components/steps/Step0';
 import Step1 from './components/steps/Step1';
 import Step2 from './components/steps/Step2';
-import Step3 from './components/steps/Step3';
 import Step4 from './components/steps/Step4';
 import Step5 from './components/steps/Step5';
 import ConsumptionSheet from './components/ConsumptionSheet';
@@ -40,11 +20,7 @@ import { replaceFilesWithBlobUrls, uploadToBlob } from '../../services/blobUploa
 import { scrollToFirstError } from '@/utils/scrollToFirstError';
 import { hydrateSkusFromFactoryCodes, mergeDraftOverCommitted } from './utils/hydrateFromCommitted';
 import { useLoading } from '../../context/LoadingContext';
-import {
-  buildWizardPayload as buildWizardPayloadUtil,
-  cleanArtworkFilesForWizard,
-  cleanPackagingFilesForWizard,
-} from './utils/wizardPayload';
+import { buildWizardPayload as buildWizardPayloadUtil, cleanArtworkFilesForWizard, cleanPackagingFilesForWizard } from './utils/wizardPayload';
 
 // ─── IMAGE COMPRESSION UTILITY ───────────────────────────────────────────────
 // Compresses image to maxKB. Quality never drops below (1 - maxQualityDrop).
@@ -261,10 +237,6 @@ const GenerateFactoryCode = ({
   const [showHighlight, setShowHighlight] = useState(highlightOnMount);
   const [showIPCPopup, setShowIPCPopup] = useState(false);
   const [generatedIPCCodes, setGeneratedIPCCodes] = useState([]);
-  const [step2ComponentErrorsDialog, setStep2ComponentErrorsDialog] = useState({
-    open: false,
-    componentErrors: [] // Array of { componentName, errorCount, errors: [{ fieldKey, message }] }
-  });
   const [step0Saved, setStep0Saved] = useState(false);
   const [step1Saved, setStep1Saved] = useState(false);
   const [step2SavedComponents, setStep2SavedComponents] = useState(new Set()); // Track saved components in Step-2
@@ -787,12 +759,6 @@ const GenerateFactoryCode = ({
     }
   };
 
-  const clearLocalStorage = (ipoCode) => {
-    localStorage.removeItem(STORAGE_KEY);
-    if (ipoCode) {
-      localStorage.removeItem(getStorageKey(ipoCode));
-    }
-  };
 
   useEffect(() => {
     let cancelled = false;
@@ -990,14 +956,6 @@ const GenerateFactoryCode = ({
   const ipcFlowTotalSteps = 2;
   const ipcFlowStepLabels = ['Cut & Sew Spec', 'BOM & WIP', 'Artwork & Labeling'];
 
-  // Step labels for progress bar
-  const stepLabels = [
-    'Product Spec',
-    'Cut & Sew Spec',
-    'Raw Material',
-    'Artwork & Labeling',
-    'Packaging'
-  ];
 
   // Init shipping groups when Factory Code popup opens
   useEffect(() => {
@@ -1633,34 +1591,6 @@ const GenerateFactoryCode = ({
     });
   };
 
-  // Helpers to decide if a row has any user input (for optional navigation)
-  const isRawMaterialFilled = (material = {}) => {
-    const hasWorkOrderSelection = material.workOrders?.some(wo => wo?.workOrder?.trim());
-    const isStitchingThread = material.materialType === 'Yarn' && material.subMaterial?.toString().trim() === 'Stitching Thread';
-    const hasStitchingThreadQty = material.stitchingThreadQty?.toString().trim() || material.stitchingThreadQtyYardage?.toString().trim() || material.stitchingThreadQtyKgs?.toString().trim();
-    const hasStitchingThreadUnit = material.stitchingThreadUnit?.trim() || (material.stitchingThreadQtyYardage != null && String(material.stitchingThreadQtyYardage).trim() !== '') || (material.stitchingThreadQtyKgs != null && String(material.stitchingThreadQtyKgs).trim() !== '');
-    return Boolean(
-      material.materialType?.trim() ||
-      material.materialDescription?.trim() ||
-      material.netConsumption?.toString().trim() ||
-      material.unit?.trim() ||
-      material.fiberType?.trim() ||
-      material.yarnType?.trim() ||
-      material.fabricName?.trim() ||
-      material.trimAccessory?.trim() ||
-      material.subMaterial?.trim() ||
-      material.stitchingThreadType?.trim() ||
-      material.stitchingThreadFibreContent?.trim() ||
-      material.stitchingThreadCountTicket?.trim() ||
-      material.stitchingThreadUseType?.trim() ||
-      material.stitchingThreadTex?.trim() ||
-      material.stitchingThreadPly?.trim() ||
-      material.stitchingThreadColour?.trim() ||
-      material.stitchingThreadRef?.trim() ||
-      (isStitchingThread && (hasStitchingThreadQty || hasStitchingThreadUnit)) ||
-      hasWorkOrderSelection
-    );
-  };
 
   const isConsumptionMaterialFilled = (material = {}) => {
     return Boolean(
@@ -1818,27 +1748,6 @@ const GenerateFactoryCode = ({
     return { isValid, errors: newErrors };
   };
 
-  const handleProductNameChange = (productIndex, value) => {
-    setStep1Saved(false); // Any edit invalidates saved state
-    updateSelectedSkuStepData((stepData) => {
-      const updatedProducts = [...stepData.products];
-      updatedProducts[productIndex] = {
-        ...updatedProducts[productIndex],
-        name: value
-      };
-      return withUpdatedIpcSavedState({ ...stepData, products: updatedProducts }, { cut: false });
-    });
-    
-    // Clear error
-    const errorKey = `product_${productIndex}_name`;
-    if (errors[errorKey]) {
-      setErrors(prev => {
-        const newErrors = { ...prev };
-        delete newErrors[errorKey];
-        return newErrors;
-      });
-    }
-  };
 
   const handleComponentChange = (productIndex, componentIndex, field, value) => {
     setStep1Saved(false); // Any edit invalidates saved state
@@ -1963,32 +1872,7 @@ const GenerateFactoryCode = ({
     }
   };
 
-  const addProduct = () => {
-    updateSelectedSkuStepData((stepData) => ({
-      ...stepData,
-      products: [...stepData.products, {
-        name: '',
-        components: [{
-          srNo: 1,
-          productComforter: '',
-          unit: '',
-          gsm: '',
-          cuttingSize: { length: '', width: '', unit: '' },
-          sewSize: { length: '', width: '', unit: '' },
-        }],
-      }]
-    }));
-  };
 
-  const removeProduct = (productIndex) => {
-    const stepData = getSelectedSkuStepData();
-    if (stepData && stepData.products.length > 1) {
-      updateSelectedSkuStepData((stepData) => ({
-        ...stepData,
-        products: stepData.products.filter((_, i) => i !== productIndex)
-      }));
-    }
-  };
 
   const addComponent = (productIndex) => {
     setStep1Saved(false); // Adding component invalidates saved state
@@ -3206,561 +3090,8 @@ const GenerateFactoryCode = ({
     return { isValid: Object.keys(newErrors).length === 0, errors: newErrors };
   };
 
-  const handleConsumptionMaterialChange = (materialIndex, field, value) => {
-    updateSelectedSkuStepData((stepData) => {
-      if (!stepData.consumptionMaterials || !stepData.consumptionMaterials[materialIndex]) {
-        return stepData;
-      }
-      const updatedMaterials = [...stepData.consumptionMaterials];
-      const currentMaterial = updatedMaterials[materialIndex];
-      
-      // If trimAccessory changes, clear all category-specific fields
-      if (field === 'trimAccessory') {
-        // Clear validation errors for this material when switching trim type
-        setErrors((prev) => {
-          const next = { ...prev };
-          const prefix = `consumptionMaterial_${materialIndex}_`;
-          Object.keys(next).forEach((key) => {
-            if (key.startsWith(prefix)) delete next[key];
-          });
-          return next;
-        });
-        const clearedMaterial = {
-          ...currentMaterial,
-          trimAccessory: value,
-          // Clear all conditional fields
-          zipNumber: '', zipType: '', brand: '', teeth: '', puller: '', pullerType: '', length: '', showZippersAdvancedSpec: false, zipSliderType: '', zipFinish: '', zipLengthTolerance: '',
-          velcroPart: '', velcroType: '', velcroMaterial: '', velcroAttachment: '', velcroPlacement: '', velcroPlacementReferenceImage: null, velcroSizeSpec: '', velcroLengthCm: '', velcroWidthCm: '', velcroYardageCns: '', velcroKgsCns: '', velcroTestingRequirements: '', velcroTestingRequirementFile: null, velcroQty: '', velcroKgsPerPc: '', velcroYardagePerPc: '', velcroSurplus: '', velcroWastage: '', velcroApproval: '', velcroRemarks: '', velcroColour: '', velcroColorReference: null, velcroHookDensity: '', velcroLoopType: '', velcroCycleLife: '', velcroFlameRetardant: '', showVelcroAdvancedSpec: false,
-          threadType: '', fibreContent: '', countTicketNo: '', ply: '', threadFinish: '', usage: '',
-          buttonType: '', buttonMaterial: '', buttonSize: '', buttonLigne: '', buttonHoles: '', buttonFinishColour: '', buttonPlacement: '', buttonTestingRequirements: '', buttonDropdown: '', buttonMultiselect: '', buttonQty: '', buttonSurplus: '', buttonWastage: '', buttonApproval: '', buttonRemarks: '', buttonTestingRequirementFile: null, buttonColorReference: null, buttonReferenceImage: null, buttonAttachment: '', buttonFunction: '', buttonLogo: '', showButtonsAdvancedSpec: false,
-          rivetType: '', rivetMaterial: '', rivetCapSize: '', rivetPostHeight: '', rivetFinishPlating: '', rivetPlacement: '', rivetPlacementReferenceImage: null, rivetTestingRequirements: '', rivetTestingRequirementFile: null, rivetQty: '', rivetSurplus: '', rivetWastage: '', rivetApproval: '', rivetRemarks: '', rivetLogo: '', rivetSetting: '', showRivetAdvancedSpec: false,
-          niwarType: '', niwarMaterial: '', niwarWidth: '', niwarThickness: '', niwarColour: '', finishCoating: '', tensileStrength: '',
-          laceType: '', laceMaterial: '', laceWidth: '', laceColour: '', laceFinishing: '', laceUsage: '', designReference: '',
-          interliningType: '', interliningMaterial: '', interliningAdhesiveType: '', interliningColour: '', interliningPlacement: '', interliningPlacementReferenceImage: null, interliningSizeSpec: '', interliningGsm: '', interliningLength: '', interliningWidth: '', interliningQty: '', interliningKgs: '', interliningYardage: '', interliningTestingRequirements: '', interliningSurplus: '', interliningWastage: '', interliningApproval: '', interliningRemarks: '', interliningDotDensity: '', interliningStretch: '', interliningFusingSpec: '', interliningHandFeel: '', showInterliningAdvancedSpec: false,
-          hookEyeType: '', hookEyeMaterial: '', hookEyeSize: '', hookEyeColour: '', hookEyeFinish: '', strength: '', application: '',
-          buckleType: '', buckleMaterial: '', buckleSize: '', buckleFinishColour: '', buckleFunction: '', buckleTensileStrength: '',
-          bucklesType: '', bucklesMaterial: '', bucklesSize: '', bucklesFinishColour: '', bucklesPlacement: '', bucklesTestingRequirements: '', bucklesQty: '', bucklesSurplus: '', bucklesWastage: '', bucklesApproval: '', bucklesRemarks: '', bucklesFunction: '', bucklesTensileStrength: '', bucklesSafety: '', bucklesReferenceImage: null, showBucklesAdvancedSpec: false,
-          eyeletType: '', eyeletMaterial: '', innerDiameter: '', outerDiameter: '', eyeletColour: '', eyeletApplication: '', tooling: '',
-          elasticType: '', elasticMaterial: '', elasticWidth: '', elasticColour: '', stretchTension: '', elasticPacking: '',
-          feltType: '', feltMaterial: '', feltColour: '', feltColorReference: null, feltSizeSpec: '', feltGsm: '', feltLengthCm: '', feltYardage: '', feltWidthCm: '', feltKgs: '', feltQty: '', feltTestingRequirements: '', feltSurplus: '', feltWastage: '', feltApproval: '', feltRemarks: '', feltThickness: '', feltFinishForm: '', feltApplication: '', feltStiffness: '', showFeltAdvancedSpec: false,
-          shoulderPadType: '', shoulderPadMaterial: '', shoulderPadSize: '', shape: '', covering: '', shoulderPadAttachment: '', weight: '',
-          tubularType: '', tubularMaterial: '', widthDiameter: '', weightDensity: '', tubularColour: '', stretchPercent: '', cutting: '',
-          rfidType: '', formFactor: '', frequency: '', chipIcType: '', rfidSize: '', coding: '', security: '',
-          cableTieType: '', cableTieMaterial: '', cableTieSize: '', cableTieColour: '', cableTiePlacement: '', cableTieTensileStrength: '', cableTieFinish: '', cableTieUvResistance: '', cableTieTestingRequirements: '', cableTieQty: '', cableTieSurplus: '', cableTieWastage: '', cableTieApproval: '', cableTieRemarks: '', cableTieReferenceImage: null, showCableTieAdvancedSpec: false, cableTieUsage: '',
-          fringeType: '', fringeMaterial: '', dropLength: '', tapeWidth: '', fringeColour: '', fringeFinish: '', construction: '',
-          pipeType: '', pipeMaterial: '', diameterDimensions: '', pipeLength: '', pipeColour: '', endCaps: '', flexibility: '', pipeUsage: '',
-          seamTapeType: '', seamTapeMaterial: '', seamTapeWidth: '', seamTapeColour: '', seamTapeAdhesiveType: '', seamTapePlacement: '', seamTapePlacementReferenceImage: null, seamTapeTestingRequirements: '', seamTapeTestingRequirementFile: null, seamTapeQty: '', seamTapeSurplus: '', seamTapeWastage: '', seamTapeApproval: '', seamTapeRemarks: '', seamTapeApplicationSpec: '', seamTapeElasticity: '', seamTapeBreathability: '', showSeamTapeAdvancedSpec: false,
-          adhesiveType: '', materialBase: '', adhesiveApplication: '', viscosity: '', settingTime: '', adhesiveColour: '', applicator: '',
-          hemType: '', hemMaterial: '', cutType: '', hemWidth: '', foldType: '', hemColour: '', hemPackaging: '',
-          reflectiveTapeType: '', reflectiveTapeMaterial: '', reflectiveTapeColour: '', reflectiveTapeBaseFabric: '', reflectiveTapePlacement: '', reflectiveTapePlacementReferenceImage: null, reflectiveTapeSizeSpec: '', reflectiveTapeGsm: '', reflectiveTapeLengthCm: '', reflectiveTapeWidthCm: '', reflectiveTapeQty: '', reflectiveTapeKgs: '', reflectiveTapeYardage: '', reflectiveTapeTestingRequirements: '', reflectiveTapeTestingRequirementFile: null, reflectiveTapeSurplus: '', reflectiveTapeWastage: '', reflectiveTapeApproval: '', reflectiveTapeRemarks: '', reflectiveTapeCertification: '', reflectiveTapeWashDurability: '', reflectiveTapeReflectivity: '', showReflectiveTapeAdvancedSpec: false,
-          frType: '', frMaterial: '', complianceLevel: '', frColour: '', durability: '', frComponents: '',
-          repairKitType: '', repairKitMaterial: '', sizeShape: '', repairKitColour: '', repairKitPackaging: '', userApplication: '', contents: '',
-          cordStopType: '', cordStopMaterial: '', cordStopSize: '', cordStopColour: '', cordStopLockingMechanism: '', cordStopPlacement: '', cordStopTestingRequirements: '', cordStopDropdown: '', cordStopMultiselect: '', cordStopQty: '', cordStopSurplus: '', cordStopWastage: '', cordStopApproval: '', cordStopRemarks: '', cordStopPlacementReferenceImage: null, cordStopDropdownFile: null, cordStopMultiselectFile: null, cordStopFunction: '', cordStopBreakaway: '', showCordStopAdvancedSpec: false,
-          ringsLoopsType: '', ringsLoopsMaterial: '', ringsLoopsSize: '', ringsLoopsThicknessGauge: '', ringsLoopsFinishPlating: '', ringsLoopsPlacement: '', ringsLoopsPlacementReferenceImage: null, ringsLoopsTestingRequirements: '', ringsLoopsTestingRequirementFile: null, ringsLoopsQty: '', ringsLoopsSurplus: '', ringsLoopsWastage: '', ringsLoopsApproval: '', ringsLoopsRemarks: '', ringsLoopsLoadRating: '', ringsLoopsWelded: '', ringsLoopsApplication: '', showRingsLoopsAdvancedSpec: false,
-          foamType: '', foamDensity: '', foamThickness: '', shapeId: '', foamColour: '', properties: '', foamAttachment: '',
-          pinBarbType: '', pinBarbMaterial: '', pinBarbSize: '', pinBarbColour: '', pinBarbHeadType: '', pinBarbPlacement: '', pinBarbPlacementReferenceImage: null, pinBarbTestingRequirements: '', pinBarbTestingRequirementFile: null, pinBarbQty: '', pinBarbSurplus: '', pinBarbWastage: '', pinBarbApproval: '', pinBarbRemarks: '', pinBarbTensileStrength: '', pinBarbApplication: '', pinBarbMagazineCartridge: '', showPinBarbAdvancedSpec: false,
-          magneticClosureType: '', magneticClosureMaterial: '', magneticClosureSize: '', magneticClosureStrength: '', magneticClosurePlacement: '', magneticClosurePlacementReferenceImage: null, magneticClosureTestingRequirements: '', magneticClosureTestingRequirementFile: null, magneticClosureQty: '', magneticClosureSurplus: '', magneticClosureWastage: '', magneticClosureApproval: '', magneticClosureRemarks: '', magneticClosurePolarity: '', magneticClosureApplication: '', magneticClosureEncasing: '', magneticClosureShielding: '', showMagneticClosureAdvancedSpec: false,
-          // Clear common fields
-          testingRequirement: '', testingRequirementFile: null, lengthQuantity: '', buyersInitialIpp: '', unitAdditional: '',
-        };
-        // Auto-set unit to PCS when the trim type is BUTTONS — buttons are
-        // always counted in pieces, so prefilling avoids the user picking it
-        // each time. Switching to a different trim leaves the unit untouched.
-        if (String(value).toUpperCase().trim() === 'BUTTONS') {
-          clearedMaterial.unit = 'PCS';
-        }
-        updatedMaterials[materialIndex] = clearedMaterial;
-      } else {
-        // Handle nested fields like size.width, size.length, etc.
-        if (field.startsWith('size.')) {
-          const sizeField = field.split('.')[1];
-      updatedMaterials[materialIndex] = {
-            ...currentMaterial,
-            size: {
-              ...currentMaterial.size,
-              [sizeField]: value
-            }
-          };
-        } else {
-          updatedMaterials[materialIndex] = {
-            ...currentMaterial,
-        [field]: value
-      };
-        }
-      }
-      
-      // Recalculate total wastage and gross consumption when relevant fields change
-      if (field === 'wastage' || field === 'netConsumption') {
-        const wastage = parseFloat(updatedMaterials[materialIndex].wastage?.replace('%', '') || updatedMaterials[materialIndex].wastage || '0') || 0;
-        updatedMaterials[materialIndex].totalWastage = `${wastage}%`;
-        const parsed = parseSelectedSku();
-        const sku = formData.skus[parsed.skuIndex];
-        const overagePercentage = (parsed.type === 'subproduct' && sku?.subproducts?.[parsed.subproductIndex]) 
-          ? (sku.subproducts[parsed.subproductIndex].overagePercentage || '0')
-          : (sku?.overagePercentage || '0');
-        const poQty = (parsed.type === 'subproduct' && sku?.subproducts?.[parsed.subproductIndex]) 
-          ? (sku.subproducts[parsed.subproductIndex].poQty || '0')
-          : (sku?.poQty || '0');
-        updatedMaterials[materialIndex].grossConsumption = calculateGrossConsumption(
-          updatedMaterials[materialIndex].netConsumption || '0',
-          wastage,
-          overagePercentage,
-          poQty
-        );
-      }
-      
-      return { ...stepData, consumptionMaterials: updatedMaterials };
-    });
-    
-    // Clear error
-    const errorKey = `consumptionMaterial_${materialIndex}_${field}`;
-    if (errors[errorKey]) {
-      setErrors(prev => {
-        const newErrors = { ...prev };
-        delete newErrors[errorKey];
-        return newErrors;
-      });
-    }
-  };
 
-  const addConsumptionMaterial = () => {
-    updateSelectedSkuStepData((stepData) => {
-      const newSrNo = (stepData.consumptionMaterials || []).length + 1;
-      return {
-        ...stepData,
-        consumptionMaterials: [...(stepData.consumptionMaterials || []), {
-          srNo: newSrNo,
-          components: '',
-          trimAccessory: '',
-          materialDescription: '',
-          netConsumption: '',
-          unit: '',
-          qualityVerification: '',
-          placement: '',
-          size: {
-            width: '',
-            length: '',
-            height: '',
-            unit: '',
-          },
-          workOrder: '',
-          surplus: '',
-          surplusForSection: '',
-          approval: '',
-          remarks: '',
-          testingRequirement: '',
-          testingRequirementFile: null,
-          lengthQuantity: '',
-          buyersInitialIpp: '',
-          unitAdditional: '',
-          // Conditional fields for different trim types
-          // ZIPPERS
-          zipNumber: '',
-          zipType: '',
-          brand: '',
-          teeth: '',
-          puller: '',
-          pullerType: '',
-          length: '',
-          showZippersAdvancedSpec: false,
-          zipSliderType: '',
-          zipFinish: '',
-          zipLengthTolerance: '',
-          // VELCRO
-          velcroPart: '',
-          velcroType: '',
-          velcroMaterial: '',
-          velcroAttachment: '',
-          velcroPlacement: '',
-          velcroPlacementReferenceImage: null,
-          velcroSizeSpec: '',
-          velcroLengthCm: '',
-          velcroWidthCm: '',
-          velcroYardageCns: '',
-          velcroKgsCns: '',
-          velcroTestingRequirements: '',
-          velcroTestingRequirementFile: null,
-          velcroQty: '',
-          velcroKgsPerPc: '',
-          velcroYardagePerPc: '',
-          velcroSurplus: '',
-          velcroWastage: '',
-          velcroApproval: '',
-          velcroRemarks: '',
-          velcroColour: '',
-          velcroColorReference: null,
-          velcroHookDensity: '',
-          velcroLoopType: '',
-          velcroCycleLife: '',
-          velcroFlameRetardant: '',
-          showVelcroAdvancedSpec: false,
-          // STITCHING THREAD
-          threadType: '',
-          fibreContent: '',
-          countTicketNo: '',
-          ply: '',
-          threadFinish: '',
-          usage: '',
-          // BUTTONS
-          buttonType: '',
-          buttonMaterial: '',
-          buttonSize: '',
-          buttonLigne: '',
-          buttonHoles: '',
-          buttonFinishColour: '',
-          buttonPlacement: '',
-          buttonTestingRequirements: '',
-          buttonDropdown: '',
-          buttonMultiselect: '',
-          buttonQty: '',
-          buttonSurplus: '',
-          buttonWastage: '',
-          buttonApproval: '',
-          buttonRemarks: '',
-          buttonTestingRequirementFile: null,
-          buttonColorReference: null,
-          buttonReferenceImage: null,
-          buttonAttachment: '',
-          buttonFunction: '',
-          buttonLogo: '',
-          showButtonsAdvancedSpec: false,
-          // RIVETS
-          rivetType: '',
-          rivetMaterial: '',
-          rivetCapSize: '',
-          rivetPostHeight: '',
-          rivetFinishPlating: '',
-          rivetPlacement: '',
-          rivetPlacementReferenceImage: null,
-          rivetTestingRequirements: '',
-          rivetTestingRequirementFile: null,
-          rivetQty: '',
-          rivetSurplus: '',
-          rivetWastage: '',
-          rivetApproval: '',
-          rivetRemarks: '',
-          rivetLogo: '',
-          rivetSetting: '',
-          showRivetAdvancedSpec: false,
-          // NIWAR
-          niwarType: '',
-          niwarMaterial: '',
-          niwarWidth: '',
-          niwarThickness: '',
-          niwarColour: '',
-          finishCoating: '',
-          tensileStrength: '',
-          // LACE
-          laceType: '',
-          laceMaterial: '',
-          laceWidth: '',
-          laceColour: '',
-          laceFinishing: '',
-          laceUsage: '',
-          designReference: '',
-          // INTERLINING/FUSING
-          interliningType: '',
-          interliningMaterial: '',
-          interliningAdhesiveType: '',
-          interliningColour: '',
-          interliningPlacement: '',
-          interliningPlacementReferenceImage: null,
-          interliningSizeSpec: '',
-          interliningGsm: '',
-          interliningLength: '',
-          interliningWidth: '',
-          interliningQty: '',
-          interliningKgs: '',
-          interliningYardage: '',
-          interliningTestingRequirements: '',
-          interliningSurplus: '',
-          interliningWastage: '',
-          interliningApproval: '',
-          interliningRemarks: '',
-          interliningDotDensity: '',
-          interliningStretch: '',
-          interliningFusingSpec: '',
-          interliningHandFeel: '',
-          showInterliningAdvancedSpec: false,
-          // HOOKS & EYES
-          hookEyeType: '',
-          hookEyeMaterial: '',
-          hookEyeSize: '',
-          hookEyeColour: '',
-          hookEyeFinish: '',
-          strength: '',
-          application: '',
-          // BUCKLES & ADJUSTERS
-          buckleType: '',
-          buckleMaterial: '',
-          buckleSize: '',
-          buckleFinishColour: '',
-          buckleFunction: '',
-          buckleTensileStrength: '',
-          // EYELETS & GROMMETS
-          eyeletType: '',
-          eyeletMaterial: '',
-          innerDiameter: '',
-          outerDiameter: '',
-          eyeletColour: '',
-          eyeletApplication: '',
-          tooling: '',
-          // ELASTIC
-          elasticType: '',
-          elasticMaterial: '',
-          elasticWidth: '',
-          elasticColour: '',
-          stretchTension: '',
-          elasticPacking: '',
-          // FELT
-          feltType: '',
-          feltMaterial: '',
-          feltColour: '',
-          feltColorReference: null,
-          feltSizeSpec: '',
-          feltGsm: '',
-          feltLengthCm: '',
-          feltYardage: '',
-          feltWidthCm: '',
-          feltKgs: '',
-          feltQty: '',
-          feltTestingRequirements: '',
-          feltSurplus: '',
-          feltWastage: '',
-          feltApproval: '',
-          feltRemarks: '',
-          feltThickness: '',
-          feltFinishForm: '',
-          feltApplication: '',
-          feltStiffness: '',
-          showFeltAdvancedSpec: false,
-          // SHOULDER PADS
-          shoulderPadType: '',
-          shoulderPadMaterial: '',
-          shoulderPadSize: '',
-          shape: '',
-          covering: '',
-          shoulderPadAttachment: '',
-          weight: '',
-          // TUBULAR KNITS
-          tubularType: '',
-          tubularMaterial: '',
-          widthDiameter: '',
-          weightDensity: '',
-          tubularColour: '',
-          stretchPercent: '',
-          cutting: '',
-          // RFID / EAS TAGS
-          rfidType: '',
-          formFactor: '',
-          frequency: '',
-          chipIcType: '',
-          rfidSize: '',
-          coding: '',
-          security: '',
-          // PLASTIC CABLE TIES
-          cableTieType: '',
-          cableTieMaterial: '',
-          cableTieSize: '',
-          cableTieColour: '',
-          cableTieTensileStrength: '',
-          cableTieFinish: '',
-          cableTieUsage: '',
-          // FRINGE/TASSELS
-          fringeType: '',
-          fringeAttachmentMethod: '',
-          fringeMaterial: '',
-          dropLength: '',
-          tapeWidth: '',
-          fringeColour: '',
-          fringeFinish: '',
-          construction: '',
-          // PLASTIC PIPES/RODS
-          pipeType: '',
-          pipeMaterial: '',
-          diameterDimensions: '',
-          pipeLength: '',
-          pipeColour: '',
-          endCaps: '',
-          flexibility: '',
-          pipeUsage: '',
-          // SEAM SEALING TAPE
-          seamTapeType: '',
-          seamTapeMaterial: '',
-          seamTapeWidth: '',
-          seamTapeColour: '',
-          seamTapeAdhesiveType: '',
-          seamTapePlacement: '',
-          seamTapePlacementReferenceImage: null,
-          seamTapeTestingRequirements: '',
-          seamTapeTestingRequirementFile: null,
-          seamTapeQty: '',
-          seamTapeSurplus: '',
-          seamTapeWastage: '',
-          seamTapeApproval: '',
-          seamTapeRemarks: '',
-          seamTapeApplicationSpec: '',
-          seamTapeElasticity: '',
-          seamTapeBreathability: '',
-          showSeamTapeAdvancedSpec: false,
-          // ADHESIVES/GUNNING
-          adhesiveType: '',
-          materialBase: '',
-          adhesiveApplication: '',
-          viscosity: '',
-          settingTime: '',
-          adhesiveColour: '',
-          applicator: '',
-          // PRE-CUT HEMS/BINDINGS
-          hemType: '',
-          hemMaterial: '',
-          cutType: '',
-          hemWidth: '',
-          foldType: '',
-          hemColour: '',
-          hemPackaging: '',
-          // REFLECTIVE TAPES/TRIMS
-          reflectiveTapeType: '',
-          reflectiveTapeMaterial: '',
-          reflectiveTapeColour: '',
-          reflectiveTapeBaseFabric: '',
-          reflectiveTapePlacement: '',
-          reflectiveTapePlacementReferenceImage: null,
-          reflectiveTapeSizeSpec: '',
-          reflectiveTapeGsm: '',
-          reflectiveTapeLengthCm: '',
-          reflectiveTapeWidthCm: '',
-          reflectiveTapeQty: '',
-          reflectiveTapeKgs: '',
-          reflectiveTapeYardage: '',
-          reflectiveTapeTestingRequirements: '',
-          reflectiveTapeTestingRequirementFile: null,
-          reflectiveTapeSurplus: '',
-          reflectiveTapeWastage: '',
-          reflectiveTapeApproval: '',
-          reflectiveTapeRemarks: '',
-          reflectiveTapeCertification: '',
-          reflectiveTapeWashDurability: '',
-          reflectiveTapeReflectivity: '',
-          showReflectiveTapeAdvancedSpec: false,
-          // FIRE RETARDANT TRIMS
-          frType: '',
-          frMaterial: '',
-          complianceLevel: '',
-          frColour: '',
-          durability: '',
-          frComponents: '',
-          // REPAIR KITS/PATCHES
-          repairKitType: '',
-          repairKitMaterial: '',
-          sizeShape: '',
-          repairKitColour: '',
-          repairKitPackaging: '',
-          userApplication: '',
-          contents: '',
-          // CORD STOPS
-          cordStopType: '',
-          cordStopMaterial: '',
-          cordStopSize: '',
-          cordStopColour: '',
-          cordStopLockingMechanism: '',
-          cordStopPlacement: '',
-          cordStopTestingRequirements: '',
-          cordStopDropdown: '',
-          cordStopMultiselect: '',
-          cordStopQty: '',
-          cordStopSurplus: '',
-          cordStopWastage: '',
-          cordStopApproval: '',
-          cordStopRemarks: '',
-          cordStopPlacementReferenceImage: null,
-          cordStopDropdownFile: null,
-          cordStopMultiselectFile: null,
-          cordStopFunction: '',
-          cordStopBreakaway: '',
-          showCordStopAdvancedSpec: false,
-          // D-RINGS
-          ringsLoopsType: '',
-          ringsLoopsMaterial: '',
-          ringsLoopsSize: '',
-          ringsLoopsThicknessGauge: '',
-          ringsLoopsFinishPlating: '',
-          ringsLoopsPlacement: '',
-          ringsLoopsPlacementReferenceImage: null,
-          ringsLoopsTestingRequirements: '',
-          ringsLoopsTestingRequirementFile: null,
-          ringsLoopsQty: '',
-          ringsLoopsSurplus: '',
-          ringsLoopsWastage: '',
-          ringsLoopsApproval: '',
-          ringsLoopsRemarks: '',
-          ringsLoopsLoadRating: '',
-          ringsLoopsWelded: '',
-          ringsLoopsApplication: '',
-          showRingsLoopsAdvancedSpec: false,
-          // FOAM/WADDING
-          foamType: '',
-          foamDensity: '',
-          foamThickness: '',
-          shapeId: '',
-          foamColour: '',
-          properties: '',
-          foamAttachment: '',
-          // PIN-BARBS
-          pinBarbType: '',
-          pinBarbMaterial: '',
-          pinBarbSize: '',
-          pinBarbColour: '',
-          pinBarbHeadType: '',
-          pinBarbPlacement: '',
-          pinBarbPlacementReferenceImage: null,
-          pinBarbTestingRequirements: '',
-          pinBarbTestingRequirementFile: null,
-          pinBarbQty: '',
-          pinBarbSurplus: '',
-          pinBarbWastage: '',
-          pinBarbApproval: '',
-          pinBarbRemarks: '',
-          pinBarbTensileStrength: '',
-          pinBarbApplication: '',
-          pinBarbMagazineCartridge: '',
-          showPinBarbAdvancedSpec: false,
-          // MAGNETIC CLOSURES
-          magneticClosureType: '',
-          magneticClosureMaterial: '',
-          magneticClosureSize: '',
-          magneticClosureStrength: '',
-          magneticClosurePlacement: '',
-          magneticClosurePlacementReferenceImage: null,
-          magneticClosureTestingRequirements: '',
-          magneticClosureTestingRequirementFile: null,
-          magneticClosureQty: '',
-          magneticClosureSurplus: '',
-          magneticClosureWastage: '',
-          magneticClosureApproval: '',
-          magneticClosureRemarks: '',
-          magneticClosurePolarity: '',
-          magneticClosureApplication: '',
-          magneticClosureEncasing: '',
-          magneticClosureShielding: '',
-          showMagneticClosureAdvancedSpec: false,
-        }]
-      };
-    });
-  };
 
-  const removeConsumptionMaterial = (materialIndex) => {
-    const stepData = getSelectedSkuStepData();
-    if (stepData && stepData.consumptionMaterials && stepData.consumptionMaterials.length > 1) {
-      updateSelectedSkuStepData((stepData) => ({
-        ...stepData,
-        consumptionMaterials: stepData.consumptionMaterials.filter((_, i) => i !== materialIndex).map((material, i) => ({
-          ...material,
-          srNo: i + 1
-        }))
-      }));
-    }
-  };
 
   const validateStep5 = () => {
     const newErrors = {};
@@ -3893,9 +3224,6 @@ const GenerateFactoryCode = ({
     const newErrors = {};
     const stepData = getSelectedSkuStepData();
     const materials = stepData?.artworkMaterials || [];
-
-    // Artwork optional at IPC level: use shared helper for "has data"
-    const materialsWithData = materials.filter((m) => artworkMaterialHasData(m));
 
     // No "at least one material required" - artwork/labeling is optional
     materials.forEach((material, materialIndex) => {
@@ -4378,95 +3706,7 @@ const GenerateFactoryCode = ({
     }
   };
 
-  // Packaging Material Size Change Handler
-  const handlePackagingMaterialSizeChange = (materialIndex, field, value) => {
-    setStep4Saved(false);
-    setStep4SaveStatus('idle');
-    updateSelectedSkuStepData((stepData) => {
-      const updatedMaterials = [...stepData.packaging.materials];
-      updatedMaterials[materialIndex] = {
-        ...updatedMaterials[materialIndex],
-        size: {
-          ...updatedMaterials[materialIndex].size,
-          [field]: value
-        }
-      };
-      return {
-        ...stepData,
-        packaging: {
-          ...stepData.packaging,
-          materials: updatedMaterials
-        }
-      };
-    });
-    
-    const errorKey = `packaging_material_${materialIndex}_size_${field}`;
-    if (errors[errorKey]) {
-      setErrors(prev => {
-        const newErrors = { ...prev };
-        delete newErrors[errorKey];
-        return newErrors;
-      });
-    }
-  };
 
-  // Packaging Work Order Change Handler
-  const handlePackagingWorkOrderChange = (materialIndex, workOrderIndex, field, value) => {
-    setStep4Saved(false);
-    setStep4SaveStatus('idle');
-    updateSelectedSkuStepData((stepData) => {
-      const updatedMaterials = [...stepData.packaging.materials];
-      updatedMaterials[materialIndex] = {
-        ...updatedMaterials[materialIndex],
-        workOrders: updatedMaterials[materialIndex].workOrders.map((wo, idx) =>
-          idx === workOrderIndex ? { ...wo, [field]: value } : wo
-        )
-      };
-      
-      // Recalculate total wastage
-      let totalWastagePercent = 0;
-      updatedMaterials[materialIndex].workOrders.forEach(wo => {
-        totalWastagePercent += parseFloat(wo.wastage) || 0;
-      });
-      updatedMaterials[materialIndex].totalWastage = totalWastagePercent.toFixed(2);
-      
-      // Recalculate gross consumption
-      const material = updatedMaterials[materialIndex];
-      const netConsumption = parseFloat(material.netConsumptionPerPc) || 0;
-      const overage = parseFloat(material.overage) || 0;
-      const parsed = parseSelectedSku();
-      const sku = formData.skus[parsed.skuIndex];
-      const poQty = parseFloat((parsed.type === 'subproduct' && sku?.subproducts?.[parsed.subproductIndex]) 
-        ? (sku.subproducts[parsed.subproductIndex].poQty || '0')
-        : (sku?.poQty || '0')) || 0;
-      
-      const baseConsumption = netConsumption * poQty;
-      const wastageAmount = baseConsumption * (totalWastagePercent / 100);
-      const overageAmount = baseConsumption * (overage / 100);
-      const grossConsumption = baseConsumption + wastageAmount + overageAmount;
-      
-      updatedMaterials[materialIndex].grossConsumption = grossConsumption.toFixed(4);
-      
-      return {
-        ...stepData,
-        packaging: {
-          ...stepData.packaging,
-          materials: updatedMaterials
-        }
-      };
-    });
-    
-    const errorKey = `packaging_material_${materialIndex}_workOrder_${workOrderIndex}_${field}`;
-    const simpleWorkOrderKey = workOrderIndex === 0 && field === 'workOrder' ? `packaging_material_${materialIndex}_workOrder` : null;
-    if (errors[errorKey] || (simpleWorkOrderKey && errors[simpleWorkOrderKey])) {
-      setErrors(prev => {
-        const newErrors = { ...prev };
-        delete newErrors[errorKey];
-        if (simpleWorkOrderKey) delete newErrors[simpleWorkOrderKey];
-        return newErrors;
-      });
-    }
-  };
 
   // Add Packaging Material
   const addPackagingMaterial = () => {
@@ -4702,14 +3942,6 @@ const GenerateFactoryCode = ({
         packaging: { ...stepData.packaging, extraPacks },
       };
     });
-  };
-
-  // Check if product requires size fields (CUSHION/FILLER/TOTE BAG)
-  const requiresSizeFields = (productSelection) => {
-    const sizeRequiredProducts = ['CUSHION', 'FILLER', 'TOTE BAG', 'VELVET CUSHION', 'COMFORTER', 'PILLOW', 'BAG'];
-    return sizeRequiredProducts.some(p => 
-      productSelection?.toUpperCase().includes(p)
-    );
   };
 
   const removeRawMaterial = (materialIndex) => {
@@ -5148,59 +4380,6 @@ const GenerateFactoryCode = ({
     return { isValid, errors: newErrors };
   };
 
-  // Helper function to group validation errors by component name
-  const groupErrorsByComponent = (errors) => {
-    const stepData = getSelectedSkuStepData();
-    const allMaterials = (stepData && stepData.rawMaterials) || [];
-    const componentMap = new Map();
-
-    Object.entries(errors).forEach(([errorKey, message]) => {
-      // Check if it's a component-level error
-      if (errorKey.startsWith('component_')) {
-        // Extract component name from error key (e.g., "component_Shell_missing" -> "Shell")
-        const match = errorKey.match(/^component_(.+?)_(missing|incomplete)$/);
-        if (match) {
-          const componentSafeName = match[1];
-          // Try to find the actual component name by matching materials
-          const componentName = allMaterials.find(m => {
-            const safe = m?.componentName?.replace(/[^a-zA-Z0-9]+/g, '_');
-            return safe === componentSafeName;
-          })?.componentName || componentSafeName.replace(/_/g, ' ');
-
-          if (!componentMap.has(componentName)) {
-            componentMap.set(componentName, { componentName, errorCount: 0, errors: [] });
-          }
-          componentMap.get(componentName).errorCount++;
-          componentMap.get(componentName).errors.push({ fieldKey: errorKey, message });
-        }
-      } else if (errorKey.startsWith('rawMaterial_')) {
-        // Extract material index from error key (e.g., "rawMaterial_5_materialType" -> 5)
-        const match = errorKey.match(/^rawMaterial_(\d+)_/);
-        if (match) {
-          const materialIndex = parseInt(match[1]);
-          const material = allMaterials[materialIndex];
-          if (material?.componentName) {
-            const componentName = material.componentName;
-            if (!componentMap.has(componentName)) {
-              componentMap.set(componentName, { componentName, errorCount: 0, errors: [] });
-            }
-            componentMap.get(componentName).errorCount++;
-            componentMap.get(componentName).errors.push({ fieldKey: errorKey, message });
-          }
-        }
-      } else if (errorKey === 'no_materials') {
-        // This is a general error, add to all components or create a special entry
-        const componentName = 'All Components';
-        if (!componentMap.has(componentName)) {
-          componentMap.set(componentName, { componentName, errorCount: 0, errors: [] });
-        }
-        componentMap.get(componentName).errorCount++;
-        componentMap.get(componentName).errors.push({ fieldKey: errorKey, message });
-      }
-    });
-
-    return Array.from(componentMap.values());
-  };
 
   // Reset selected SKU when going back to step 0 (only in step0 flow, not ipcFlow)
   useEffect(() => {
@@ -5449,9 +4628,6 @@ const GenerateFactoryCode = ({
     }
   };
 
-  const getProgressPercentage = () => {
-    return ((currentStep + 1) / (totalSteps + 1)) * 100;
-  };
 
   // Get merged formData with selected SKU's step data for steps 1-5
   const getMergedFormData = () => {
