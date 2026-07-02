@@ -1,7 +1,12 @@
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
+/* Layered so Tailwind utilities can override it. A .css import is global in Vite, so an
+   UNLAYERED universal margin/padding reset here leaks app-wide (login is always visited)
+   and beats every Tailwind spacing utility (unlayered CSS wins over any @layer in v4). */
+@layer base {
+  * {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+  }
 }
 
 body, html {
