@@ -258,6 +258,7 @@ import PolyhedraLogo from "../components/PolyhedraLogo";
 import "./Login.css";
 import { scrollToFirstError } from "@/utils/scrollToFirstError";
 
+
 const Login = () => {
   const navigate = useNavigate();
   const { login } = useAuth();
@@ -417,8 +418,17 @@ const Login = () => {
   return (
     <div className="login-split-container">
       {/* Polyhedra animation fills the viewport behind everything */}
-      <PolyhedraBackground />
-
+      {/* <PolyhedraBackground /> */}
+      <PrimeRadiant
+        style={{
+          position: "absolute",
+          top: 0,
+          bottom: 0,
+          left: "50%",
+          right: 0,
+          zIndex: 0,
+        }}
+      />
       <div className="split-content-row">
         {/* ═══ LEFT — Orange marketing panel ═══════════════════════ */}
         <div className="split-left">
