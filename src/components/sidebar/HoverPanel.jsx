@@ -539,7 +539,7 @@ const HoverPanel = ({
                   })
                 }
               >
-                Inward Store Sheet
+                Inward Store Logs
               </button>
               <button
                 type="button"
@@ -553,7 +553,7 @@ const HoverPanel = ({
                   })
                 }
               >
-                Outward Store Sheet
+                Outward Store Logs
               </button>
               <button
                 type="button"
@@ -602,7 +602,7 @@ const HoverPanel = ({
           {activeSection === "inward" && (
             <div className="hover-panel nested-panel">
               <div className="hover-panel-column">
-                <div className="hover-panel-title">Inward Store Sheet</div>
+                <div className="hover-panel-title">Inward Store Logs</div>
                 <button
                   type="button"
                   className={`hover-panel-item ${activePage === "inward-store-sheet" ? "active" : ""}`}
@@ -612,7 +612,7 @@ const HoverPanel = ({
                     setHoveredMenu(null);
                   }}
                 >
-                  Inward Store Sheet Form
+                  Inward Store Logs Form
                 </button>
                 <button
                   type="button"
@@ -623,7 +623,7 @@ const HoverPanel = ({
                     setHoveredMenu(null);
                   }}
                 >
-                  Inward Store Sheet Database
+                  Inward Store Logs Database
                 </button>
               </div>
             </div>
@@ -631,7 +631,7 @@ const HoverPanel = ({
           {activeSection === "outward" && (
             <div className="hover-panel nested-panel">
               <div className="hover-panel-column">
-                <div className="hover-panel-title">Outward Store Sheet</div>
+                <div className="hover-panel-title">Outward Store Logs</div>
                 <button
                   type="button"
                   className={`hover-panel-item ${activePage === "outward-store-sheet" ? "active" : ""}`}
@@ -641,7 +641,7 @@ const HoverPanel = ({
                     setHoveredMenu(null);
                   }}
                 >
-                  Outward Store Sheet Form
+                  Outward Store Log Form
                 </button>
                 <button
                   type="button"
@@ -652,7 +652,7 @@ const HoverPanel = ({
                     setHoveredMenu(null);
                   }}
                 >
-                  Outward Store Sheet Database
+                  Outward Store Logs Database
                 </button>
               </div>
             </div>
@@ -754,8 +754,8 @@ const HoverPanel = ({
                 <div className="hover-panel-column">
                   <div className="hover-panel-title">
                     {activeSection === "inward"
-                      ? "Inward Store Sheet"
-                      : "Outward Store Sheet"}
+                      ? "Inward Store Logs"
+                      : "Outward Store Logs"}
                   </div>
                   <button
                     key={`${activeSection}-${actionsBySection[activeSection]?.key}`}

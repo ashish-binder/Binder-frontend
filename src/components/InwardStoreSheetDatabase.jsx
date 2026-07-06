@@ -1,7 +1,12 @@
 import { useEffect, useState } from 'react';
+import { Search, Plus, ChevronDown } from 'lucide-react';
 import { getInwardStoreSheets } from '../services/integration';
 import { useLoading } from '../context/LoadingContext';
-import './InwardStoreSheet.css';
+
+// Compact table controls — flat/clean theme matching the StockSheet revamp.
+const TH =
+  'border-b border-[#e2e3e8] bg-muted px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wide text-foreground whitespace-nowrap';
+const TD = 'border-b border-[#e2e3e8] px-3 py-2 align-middle text-foreground';
 
 const InwardStoreSheetDatabase = ({ onBack, onOpenForm }) => {
   const [sheets, setSheets] = useState([]);
@@ -53,171 +58,230 @@ const InwardStoreSheetDatabase = ({ onBack, onOpenForm }) => {
 
   const isChallanOnly = (sheet) => sheet.receivable_type === 'CHALLAN_ONLY';
 
+  const HEAD_COLS = 'grid grid-cols-[1.4fr_1fr_1fr_1fr_auto] items-center gap-3';
+
+  const Meta = ({ label, value, full }) => (
+    <div className={full ? 'sm:col-span-2 lg:col-span-3' : ''}>
+      <span className="mb-0.5 block text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+        {label}
+      </span>
+      <span className="text-foreground">{value || '—'}</span>
+    </div>
+  );
+
   return (
-    <div className="iss-container">
-      <div className="iss-header">
-        <button className="iss-back-button" onClick={onBack}>← Back</button>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16 }}>
-          <div>
-            <h1 className="iss-title" style={{ marginBottom: 4 }}>Inward Store Sheet Database</h1>
-            <p className="iss-description" style={{ marginBottom: 0 }}>All saved inward store sheets</p>
+    <div
+      className="min-h-full w-full overflow-y-auto bg-[#f3f4f6] py-9"
+      style={{
+        zoom: 0.9,
+        fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif',
+        '--accent': '#edeef1',
+      }}
+    >
+      <div className="mx-auto max-w-[95%] space-y-5">
+        {/* Header */}
+        <div>
+          <button
+            type="button"
+            onClick={onBack}
+            className="mb-5 inline-flex cursor-pointer items-center gap-1 rounded-md border border-[#e2e3e8] bg-white px-4 py-2 text-sm font-medium text-foreground/70 transition-colors hover:bg-[#f5f5f5] hover:shadow-lg"
+          >
+            ← Back
+          </button>
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <h1 className="text-3xl font-bold text-foreground">
+                Inward Store Logs Database
+              </h1>
+              <p className="mt-1 text-sm text-muted-foreground">
+                All saved inward store logs
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={onOpenForm}
+              className="inline-flex cursor-pointer items-center gap-2 rounded-md bg-primary px-5 py-3 text-sm font-semibold text-primary-foreground transition-all hover:opacity-90"
+            >
+              <Plus className="h-4 w-4" />
+              New Inward Store Logs
+            </button>
           </div>
-          <button className="iss-btn iss-btn-primary" onClick={onOpenForm}>+ New Inward Store Sheet</button>
         </div>
-      </div>
 
-      {/* Search */}
-      <form onSubmit={handleSearch} style={{ display: 'flex', gap: 12, marginBottom: 24, maxWidth: 500 }}>
-        <input
-          className="iss-form-input"
-          type="text"
-          placeholder="Search by UIN, challan no, invoice no..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          style={{ flex: 1 }}
-        />
-        <button type="submit" className="iss-btn iss-btn-secondary">Search</button>
-      </form>
-
-      {loading ? (
-        <p style={{ color: 'var(--muted-foreground)', padding: 24 }}>Loading...</p>
-      ) : sheets.length === 0 ? (
-        <div style={{ textAlign: 'center', padding: '60px 20px', color: 'var(--muted-foreground)' }}>
-          <p style={{ fontSize: 16, marginBottom: 12 }}>No inward store sheets found.</p>
-          <button className="iss-btn iss-btn-primary" onClick={onOpenForm}>Create your first one</button>
+        {/* Search */}
+        <div className="rounded-lg border border-[#e2e3e8] bg-card p-4">
+          <form onSubmit={handleSearch} className="flex items-center gap-3">
+            <div className="relative flex-1">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <input
+                type="text"
+                placeholder="Search by UIN, challan no, invoice no..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="w-full rounded-md border border-[#e2e3e8] bg-card py-3 pl-10 pr-4 text-sm text-foreground outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/15"
+              />
+            </div>
+            <button
+              type="submit"
+              className="cursor-pointer rounded-md border border-[#e2e3e8] bg-muted px-6 py-3 text-sm font-semibold text-foreground/70 transition-colors hover:bg-[#e9eaee]"
+            >
+              Search
+            </button>
+          </form>
         </div>
-      ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          {sheets.map((sheet) => {
-            const isExpanded = expandedId === sheet.id;
-            return (
-              <div
-                key={sheet.id}
-                style={{
-                  border: '1px solid var(--border)',
-                  borderRadius: 8,
-                  background: 'var(--background)',
-                  overflow: 'hidden',
-                }}
-              >
-                {/* Card header — always visible */}
-                <button
-                  type="button"
-                  onClick={() => setExpandedId(isExpanded ? null : sheet.id)}
-                  style={{
-                    width: '100%',
-                    display: 'grid',
-                    gridTemplateColumns: '1fr 1fr 1fr 1fr auto',
-                    gap: 12,
-                    padding: '14px 18px',
-                    background: isExpanded ? 'var(--accent)' : 'transparent',
-                    border: 'none',
-                    cursor: 'pointer',
-                    textAlign: 'left',
-                    fontSize: 13,
-                    color: 'var(--foreground)',
-                    transition: 'background 0.15s',
-                  }}
+
+        {loading ? (
+          <p className="p-6 text-sm text-muted-foreground">Loading...</p>
+        ) : sheets.length === 0 ? (
+          <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-[#d5d6dc] bg-card px-6 py-16 text-center">
+            <p className="mb-3 text-base text-muted-foreground">
+              No inward store logs found.
+            </p>
+            <button
+              type="button"
+              onClick={onOpenForm}
+              className="inline-flex cursor-pointer items-center gap-2 rounded-md bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground transition-all hover:opacity-90"
+            >
+              <Plus className="h-4 w-4" />
+              Create your first one
+            </button>
+          </div>
+        ) : (
+          <div className="overflow-hidden rounded-lg border border-[#e2e3e8] bg-card">
+            {/* Column header */}
+            <div
+              className={`${HEAD_COLS} border-b border-[#e2e3e8] bg-muted px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground`}
+            >
+              <span>UIN</span>
+              <span>Receivable Type</span>
+              <span>IPO Type</span>
+              <span>Created</span>
+              <span />
+            </div>
+
+            {sheets.map((sheet) => {
+              const isExpanded = expandedId === sheet.id;
+              return (
+                <div
+                  key={sheet.id}
+                  className="border-b border-[#e2e3e8] last:border-b-0"
                 >
-                  <span style={{ fontWeight: 600, fontFamily: 'monospace' }}>{sheet.uin_code || '—'}</span>
-                  <span>{typeLabel(sheet.receivable_type)}</span>
-                  <span>{ipoTypeLabel(sheet.ipo_type)}</span>
-                  <span style={{ color: 'var(--muted-foreground)', fontSize: 12 }}>{formatDate(sheet.created_at)}</span>
-                  <span style={{ fontSize: 16 }}>{isExpanded ? '▲' : '▼'}</span>
-                </button>
+                  {/* Card header — always visible */}
+                  <button
+                    type="button"
+                    onClick={() => setExpandedId(isExpanded ? null : sheet.id)}
+                    className={`${HEAD_COLS} w-full cursor-pointer px-4 py-3.5 text-left text-sm transition-colors ${
+                      isExpanded ? 'bg-muted' : 'hover:bg-muted'
+                    }`}
+                  >
+                    <span className="font-mono font-semibold text-foreground">
+                      {sheet.uin_code || '—'}
+                    </span>
+                    <span className="text-foreground">
+                      {typeLabel(sheet.receivable_type)}
+                    </span>
+                    <span className="text-foreground">
+                      {ipoTypeLabel(sheet.ipo_type)}
+                    </span>
+                    <span className="text-xs text-muted-foreground">
+                      {formatDate(sheet.created_at)}
+                    </span>
+                    <ChevronDown
+                      className={`h-4 w-4 text-muted-foreground transition-transform ${
+                        isExpanded ? 'rotate-180' : ''
+                      }`}
+                    />
+                  </button>
 
-                {/* Expanded detail */}
-                {isExpanded && (
-                  <div style={{ padding: '0 18px 18px', borderTop: '1px solid var(--border)' }}>
-                    {/* Meta */}
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px 24px', padding: '16px 0', fontSize: 13 }}>
-                      <div>
-                        <span style={{ fontWeight: 600, color: 'var(--muted-foreground)', display: 'block', fontSize: 11, marginBottom: 2 }}>IPO</span>
-                        {sheet.ipo_code_display || '—'}
+                  {/* Expanded detail */}
+                  {isExpanded && (
+                    <div className="border-t border-[#e2e3e8] bg-muted/30 px-4 pb-4">
+                      {/* Meta */}
+                      <div className="grid grid-cols-1 gap-x-6 gap-y-3 py-4 text-sm sm:grid-cols-2 lg:grid-cols-3">
+                        <Meta label="IPO" value={sheet.ipo_code_display} />
+                        <Meta label="VPO" value={sheet.vpo_code_display} />
+                        <Meta label="IPC" value={sheet.ipc_code_display} />
+                        <Meta
+                          label="Vendor Challan No."
+                          value={sheet.vendor_challan_no}
+                        />
+                        {!isChallanOnly(sheet) && (
+                          <Meta
+                            label="Vendor Invoice No."
+                            value={sheet.vendor_invoice_no}
+                          />
+                        )}
+                        <Meta
+                          label="Goods Receiving Condition"
+                          value={sheet.goods_receiving_condition}
+                          full
+                        />
                       </div>
-                      <div>
-                        <span style={{ fontWeight: 600, color: 'var(--muted-foreground)', display: 'block', fontSize: 11, marginBottom: 2 }}>VPO</span>
-                        {sheet.vpo_code_display || '—'}
-                      </div>
-                      <div>
-                        <span style={{ fontWeight: 600, color: 'var(--muted-foreground)', display: 'block', fontSize: 11, marginBottom: 2 }}>IPC</span>
-                        {sheet.ipc_code_display || '—'}
-                      </div>
-                      <div>
-                        <span style={{ fontWeight: 600, color: 'var(--muted-foreground)', display: 'block', fontSize: 11, marginBottom: 2 }}>Vendor Challan No.</span>
-                        {sheet.vendor_challan_no || '—'}
-                      </div>
-                      {!isChallanOnly(sheet) && (
-                        <div>
-                          <span style={{ fontWeight: 600, color: 'var(--muted-foreground)', display: 'block', fontSize: 11, marginBottom: 2 }}>Vendor Invoice No.</span>
-                          {sheet.vendor_invoice_no || '—'}
+
+                      {/* Items table */}
+                      {sheet.items && sheet.items.length > 0 && (
+                        <div className="overflow-x-auto rounded-lg border border-[#e2e3e8] bg-card">
+                          <table className="w-full table-fixed border-collapse text-sm">
+                            <colgroup>
+                              <col style={{ width: '4%' }} />
+                              <col style={{ width: isChallanOnly(sheet) ? '18%' : '13%' }} />
+                              <col style={{ width: '8%' }} />
+                              <col style={{ width: '8%' }} />
+                              <col style={{ width: '7%' }} />
+                              {!isChallanOnly(sheet) && <col style={{ width: '8%' }} />}
+                              {!isChallanOnly(sheet) && <col style={{ width: '9%' }} />}
+                              <col style={{ width: isChallanOnly(sheet) ? '15%' : '11%' }} />
+                              <col style={{ width: '10%' }} />
+                              <col style={{ width: '6%' }} />
+                              <col style={{ width: '14%' }} />
+                            </colgroup>
+                            <thead>
+                              <tr>
+                                <th className={`${TH} text-center`}>Sr</th>
+                                <th className={TH}>Particulars</th>
+                                <th className={TH}>PO Qty</th>
+                                <th className={TH}>Recd Qty</th>
+                                <th className={TH}>Bal</th>
+                                {!isChallanOnly(sheet) && <th className={TH}>Rate (₹)</th>}
+                                {!isChallanOnly(sheet) && <th className={TH}>Amount (₹)</th>}
+                                <th className={TH}>Remarks</th>
+                                <th className={TH}>Recd Form</th>
+                                <th className={TH}>Pkg</th>
+                                <th className={TH}>USN</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {sheet.items.map((item) => (
+                                <tr key={item.id} className="transition-colors hover:bg-muted/50">
+                                  <td className={`${TD} text-center font-semibold`}>
+                                    {item.sr_no}
+                                  </td>
+                                  <td className={TD}>{item.particulars || '—'}</td>
+                                  <td className={TD}>{item.po_quantity}</td>
+                                  <td className={TD}>{item.received_quantity}</td>
+                                  <td className={TD}>{item.balance}</td>
+                                  {!isChallanOnly(sheet) && <td className={TD}>₹{item.rate}</td>}
+                                  {!isChallanOnly(sheet) && <td className={TD}>₹{item.amount}</td>}
+                                  <td className={TD}>{item.remarks || '—'}</td>
+                                  <td className={TD}>{item.received_form || '—'}</td>
+                                  <td className={TD}>{item.num_packages}</td>
+                                  <td className={`${TD} font-mono text-[11px]`}>
+                                    {item.usn_code || '—'}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
                         </div>
                       )}
-                      <div style={{ gridColumn: '1 / -1' }}>
-                        <span style={{ fontWeight: 600, color: 'var(--muted-foreground)', display: 'block', fontSize: 11, marginBottom: 2 }}>Goods Receiving Condition</span>
-                        {sheet.goods_receiving_condition || '—'}
-                      </div>
                     </div>
-
-                    {/* Items table */}
-                    {sheet.items && sheet.items.length > 0 && (
-                      <div className="iss-table-wrapper" style={{ marginTop: 8 }}>
-                        <table className="iss-table">
-                          <colgroup>
-                            <col style={{ width: '4%' }} />
-                            <col style={{ width: isChallanOnly(sheet) ? '18%' : '13%' }} />
-                            <col style={{ width: '8%' }} />
-                            <col style={{ width: '8%' }} />
-                            <col style={{ width: '7%' }} />
-                            {!isChallanOnly(sheet) && <col style={{ width: '8%' }} />}
-                            {!isChallanOnly(sheet) && <col style={{ width: '9%' }} />}
-                            <col style={{ width: isChallanOnly(sheet) ? '15%' : '11%' }} />
-                            <col style={{ width: '10%' }} />
-                            <col style={{ width: '6%' }} />
-                            <col style={{ width: '14%' }} />
-                          </colgroup>
-                          <thead>
-                            <tr>
-                              <th>Sr</th>
-                              <th>Particulars</th>
-                              <th>PO Qty</th>
-                              <th>Recd Qty</th>
-                              <th>Bal</th>
-                              {!isChallanOnly(sheet) && <th>Rate (₹)</th>}
-                              {!isChallanOnly(sheet) && <th>Amount (₹)</th>}
-                              <th>Remarks</th>
-                              <th>Recd Form</th>
-                              <th>Pkg</th>
-                              <th>USN</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {sheet.items.map((item) => (
-                              <tr key={item.id}>
-                                <td style={{ textAlign: 'center', fontWeight: 600 }}>{item.sr_no}</td>
-                                <td>{item.particulars || '—'}</td>
-                                <td>{item.po_quantity}</td>
-                                <td>{item.received_quantity}</td>
-                                <td>{item.balance}</td>
-                                {!isChallanOnly(sheet) && <td>₹{item.rate}</td>}
-                                {!isChallanOnly(sheet) && <td>₹{item.amount}</td>}
-                                <td>{item.remarks || '—'}</td>
-                                <td>{item.received_form || '—'}</td>
-                                <td>{item.num_packages}</td>
-                                <td style={{ fontFamily: 'monospace', fontSize: 11 }}>{item.usn_code || '—'}</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      )}
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
     </div>
   );
 };

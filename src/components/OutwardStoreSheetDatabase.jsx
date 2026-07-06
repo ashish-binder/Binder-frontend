@@ -1,7 +1,12 @@
 import { useEffect, useState } from 'react';
+import { Search, Plus, ChevronDown } from 'lucide-react';
 import { getOutwardStoreSheets } from '../services/integration';
 import { useLoading } from '../context/LoadingContext';
-import './InwardStoreSheet.css';
+
+// Compact table controls — flat/clean theme matching the StockSheet revamp.
+const TH =
+  'border-b border-[#e2e3e8] bg-muted px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wide text-foreground whitespace-nowrap';
+const TD = 'border-b border-[#e2e3e8] px-3 py-2 align-top text-foreground';
 
 const dispatchTypeLabel = (value) => {
   const map = {
@@ -48,7 +53,7 @@ const OutwardStoreSheetDatabase = ({ onBack, onOpenForm }) => {
       const data = await getOutwardStoreSheets(params);
       const results = data?.results || data || [];
       setSheets(Array.isArray(results) ? results : []);
-    } catch (error) {
+    } catch {
       setSheets([]);
     } finally {
       setLoading(false);
@@ -65,199 +70,264 @@ const OutwardStoreSheetDatabase = ({ onBack, onOpenForm }) => {
     loadSheets();
   };
 
+  const HEAD_COLS = 'grid grid-cols-[1.2fr_1fr_1.2fr_1fr_auto] items-center gap-3';
+
+  const Meta = ({ label, value, full }) => (
+    <div className={full ? 'sm:col-span-2 lg:col-span-3' : ''}>
+      <span className="mb-0.5 block text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+        {label}
+      </span>
+      <span className="text-foreground">{value || '—'}</span>
+    </div>
+  );
+
   return (
-    <div className="iss-container">
-      <div className="iss-header">
-        <button className="iss-back-button" onClick={onBack}>
-          ← Back
-        </button>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16 }}>
-          <div>
-            <h1 className="iss-title" style={{ marginBottom: 4 }}>Outward Store Sheet Database</h1>
-            <p className="iss-description" style={{ marginBottom: 0 }}>All saved outward store sheets</p>
+    <div
+      className="min-h-full w-full overflow-y-auto bg-[#f3f4f6] py-9"
+      style={{
+        zoom: 0.9,
+        fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif',
+        '--accent': '#edeef1',
+      }}
+    >
+      <div className="mx-auto max-w-[95%] space-y-5">
+        {/* Header */}
+        <div>
+          <button
+            type="button"
+            onClick={onBack}
+            className="mb-5 inline-flex cursor-pointer items-center gap-1 rounded-md border border-[#e2e3e8] bg-white px-4 py-2 text-sm font-medium text-foreground/70 transition-colors hover:bg-[#f5f5f5] hover:shadow-lg"
+          >
+            ← Back
+          </button>
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <h1 className="text-3xl font-bold text-foreground">
+                Outward Store Logs Database
+              </h1>
+              <p className="mt-1 text-sm text-muted-foreground">
+                All saved outward store logs
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={onOpenForm}
+              className="inline-flex cursor-pointer items-center gap-2 rounded-md bg-primary px-5 py-3 text-sm font-semibold text-primary-foreground transition-all hover:opacity-90"
+            >
+              <Plus className="h-4 w-4" />
+              New Outward Store Logs
+            </button>
           </div>
-          <button className="iss-btn iss-btn-primary" onClick={onOpenForm}>
-            + New Outward Store Sheet
-          </button>
         </div>
-      </div>
 
-      <form onSubmit={handleSearch} style={{ display: 'flex', gap: 12, marginBottom: 24, maxWidth: 560 }}>
-        <input
-          className="iss-form-input"
-          type="text"
-          placeholder="Search by challan no, vendor, vehicle, contact..."
-          value={search}
-          onChange={(event) => setSearch(event.target.value)}
-          style={{ flex: 1 }}
-        />
-        <button type="submit" className="iss-btn iss-btn-secondary">Search</button>
-      </form>
-
-      {loading ? (
-        <p style={{ color: 'var(--muted-foreground)', padding: 24 }}>Loading...</p>
-      ) : sheets.length === 0 ? (
-        <div style={{ textAlign: 'center', padding: '60px 20px', color: 'var(--muted-foreground)' }}>
-          <p style={{ fontSize: 16, marginBottom: 12 }}>No outward store sheets found.</p>
-          <button className="iss-btn iss-btn-primary" onClick={onOpenForm}>
-            Create your first one
-          </button>
+        {/* Search */}
+        <div className="rounded-lg border border-[#e2e3e8] bg-card p-4">
+          <form onSubmit={handleSearch} className="flex items-center gap-3">
+            <div className="relative flex-1">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <input
+                type="text"
+                placeholder="Search by challan no, vendor, vehicle, contact..."
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                className="w-full rounded-md border border-[#e2e3e8] bg-card py-3 pl-10 pr-4 text-sm text-foreground outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/15"
+              />
+            </div>
+            <button
+              type="submit"
+              className="cursor-pointer rounded-md border border-[#e2e3e8] bg-muted px-6 py-3 text-sm font-semibold text-foreground/70 transition-colors hover:bg-[#e9eaee]"
+            >
+              Search
+            </button>
+          </form>
         </div>
-      ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          {sheets.map((sheet) => {
-            const isExpanded = expandedId === sheet.id;
-            const referenceCode = sheet.ipo_type === 'COMPANY_ESSENTIALS'
-              ? sheet.company_essential_code_display
-              : sheet.ipo_code_display;
 
-            return (
-              <div
-                key={sheet.id}
-                style={{
-                  border: '1px solid var(--border)',
-                  borderRadius: 8,
-                  background: 'var(--background)',
-                  overflow: 'hidden',
-                }}
-              >
-                <button
-                  type="button"
-                  onClick={() => setExpandedId(isExpanded ? null : sheet.id)}
-                  style={{
-                    width: '100%',
-                    display: 'grid',
-                    gridTemplateColumns: '1.2fr 1fr 1.2fr 1fr auto',
-                    gap: 12,
-                    padding: '14px 18px',
-                    background: isExpanded ? 'var(--accent)' : 'transparent',
-                    border: 'none',
-                    cursor: 'pointer',
-                    textAlign: 'left',
-                    fontSize: 13,
-                    color: 'var(--foreground)',
-                    transition: 'background 0.15s',
-                  }}
+        {loading ? (
+          <p className="p-6 text-sm text-muted-foreground">Loading...</p>
+        ) : sheets.length === 0 ? (
+          <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-[#d5d6dc] bg-card px-6 py-16 text-center">
+            <p className="mb-3 text-base text-muted-foreground">
+              No outward store logs found.
+            </p>
+            <button
+              type="button"
+              onClick={onOpenForm}
+              className="inline-flex cursor-pointer items-center gap-2 rounded-md bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground transition-all hover:opacity-90"
+            >
+              <Plus className="h-4 w-4" />
+              Create your first one
+            </button>
+          </div>
+        ) : (
+          <div className="overflow-hidden rounded-lg border border-[#e2e3e8] bg-card">
+            {/* Column header */}
+            <div
+              className={`${HEAD_COLS} border-b border-[#e2e3e8] bg-muted px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground`}
+            >
+              <span>Challan No</span>
+              <span>Dispatch Type</span>
+              <span>Issued To</span>
+              <span>Created</span>
+              <span />
+            </div>
+
+            {sheets.map((sheet) => {
+              const isExpanded = expandedId === sheet.id;
+              const referenceCode =
+                sheet.ipo_type === 'COMPANY_ESSENTIALS'
+                  ? sheet.company_essential_code_display
+                  : sheet.ipo_code_display;
+
+              return (
+                <div
+                  key={sheet.id}
+                  className="border-b border-[#e2e3e8] last:border-b-0"
                 >
-                  <span style={{ fontWeight: 600, fontFamily: 'monospace' }}>{sheet.company_challan_number || '—'}</span>
-                  <span>{dispatchTypeLabel(sheet.dispatch_type)}</span>
-                  <span>{sheet.dispatch_target_display || '—'}</span>
-                  <span style={{ color: 'var(--muted-foreground)', fontSize: 12 }}>{formatDate(sheet.created_at)}</span>
-                  <span style={{ fontSize: 16 }}>{isExpanded ? '▲' : '▼'}</span>
-                </button>
+                  {/* Card header — always visible */}
+                  <button
+                    type="button"
+                    onClick={() => setExpandedId(isExpanded ? null : sheet.id)}
+                    className={`${HEAD_COLS} w-full cursor-pointer px-4 py-3.5 text-left text-sm transition-colors ${
+                      isExpanded ? 'bg-muted' : 'hover:bg-muted'
+                    }`}
+                  >
+                    <span className="font-mono font-semibold text-foreground">
+                      {sheet.company_challan_number || '—'}
+                    </span>
+                    <span className="text-foreground">
+                      {dispatchTypeLabel(sheet.dispatch_type)}
+                    </span>
+                    <span className="text-foreground">
+                      {sheet.dispatch_target_display || '—'}
+                    </span>
+                    <span className="text-xs text-muted-foreground">
+                      {formatDate(sheet.created_at)}
+                    </span>
+                    <ChevronDown
+                      className={`h-4 w-4 text-muted-foreground transition-transform ${
+                        isExpanded ? 'rotate-180' : ''
+                      }`}
+                    />
+                  </button>
 
-                {isExpanded && (
-                  <div style={{ padding: '0 18px 18px', borderTop: '1px solid var(--border)' }}>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px 24px', padding: '16px 0', fontSize: 13 }}>
-                      <div>
-                        <span style={{ fontWeight: 600, color: 'var(--muted-foreground)', display: 'block', fontSize: 11, marginBottom: 2 }}>Dispatch / Issued To</span>
-                        {sheet.dispatch_target_display || '—'}
+                  {/* Expanded detail */}
+                  {isExpanded && (
+                    <div className="border-t border-[#e2e3e8] bg-muted/30 px-4 pb-4">
+                      {/* Meta */}
+                      <div className="grid grid-cols-1 gap-x-6 gap-y-3 py-4 text-sm sm:grid-cols-2 lg:grid-cols-3">
+                        <Meta
+                          label="Dispatch / Issued To"
+                          value={sheet.dispatch_target_display}
+                        />
+                        <Meta label="IPO Type" value={ipoTypeLabel(sheet.ipo_type)} />
+                        <Meta label="IPO / Essential" value={referenceCode} />
+                        <Meta
+                          label="Address"
+                          value={sheet.dispatch_issued_to_address}
+                        />
+                        <Meta label="Contact Person" value={sheet.contact_person} />
+                        <Meta label="Contact Number" value={sheet.contact_number} />
+                        <Meta label="Vehicle No." value={sheet.vehicle_no} />
+                        <Meta
+                          label="Vendor"
+                          value={
+                            sheet.vendor_code_display
+                              ? `${sheet.vendor_code_display} - ${sheet.vendor_name_display || ''}`
+                              : ''
+                          }
+                        />
+                        <Meta
+                          label="Department / Section"
+                          value={[
+                            sheet.department_name_display,
+                            sheet.section_name_display,
+                          ]
+                            .filter(Boolean)
+                            .join(' / ')}
+                        />
                       </div>
-                      <div>
-                        <span style={{ fontWeight: 600, color: 'var(--muted-foreground)', display: 'block', fontSize: 11, marginBottom: 2 }}>IPO Type</span>
-                        {ipoTypeLabel(sheet.ipo_type)}
-                      </div>
-                      <div>
-                        <span style={{ fontWeight: 600, color: 'var(--muted-foreground)', display: 'block', fontSize: 11, marginBottom: 2 }}>IPO / Essential</span>
-                        {referenceCode || '—'}
-                      </div>
-                      <div>
-                        <span style={{ fontWeight: 600, color: 'var(--muted-foreground)', display: 'block', fontSize: 11, marginBottom: 2 }}>Address</span>
-                        {sheet.dispatch_issued_to_address || '—'}
-                      </div>
-                      <div>
-                        <span style={{ fontWeight: 600, color: 'var(--muted-foreground)', display: 'block', fontSize: 11, marginBottom: 2 }}>Contact Person</span>
-                        {sheet.contact_person || '—'}
-                      </div>
-                      <div>
-                        <span style={{ fontWeight: 600, color: 'var(--muted-foreground)', display: 'block', fontSize: 11, marginBottom: 2 }}>Contact Number</span>
-                        {sheet.contact_number || '—'}
-                      </div>
-                      <div>
-                        <span style={{ fontWeight: 600, color: 'var(--muted-foreground)', display: 'block', fontSize: 11, marginBottom: 2 }}>Vehicle No.</span>
-                        {sheet.vehicle_no || '—'}
-                      </div>
-                      <div>
-                        <span style={{ fontWeight: 600, color: 'var(--muted-foreground)', display: 'block', fontSize: 11, marginBottom: 2 }}>Vendor</span>
-                        {sheet.vendor_code_display ? `${sheet.vendor_code_display} - ${sheet.vendor_name_display || ''}` : '—'}
-                      </div>
-                      <div>
-                        <span style={{ fontWeight: 600, color: 'var(--muted-foreground)', display: 'block', fontSize: 11, marginBottom: 2 }}>Department / Section</span>
-                        {[sheet.department_name_display, sheet.section_name_display].filter(Boolean).join(' / ') || '—'}
-                      </div>
-                    </div>
 
-                    {sheet.items && sheet.items.length > 0 && (
-                      <div className="iss-table-wrapper" style={{ marginTop: 8 }}>
-                        <table className="iss-table">
-                          <colgroup>
-                            <col style={{ width: '4%' }} />
-                            <col style={{ width: '14%' }} />
-                            <col style={{ width: '9%' }} />
-                            <col style={{ width: '8%' }} />
-                            <col style={{ width: '20%' }} />
-                            <col style={{ width: '9%' }} />
-                            <col style={{ width: '8%' }} />
-                            <col style={{ width: '10%' }} />
-                            <col style={{ width: '10%' }} />
-                            <col style={{ width: '8%' }} />
-                            <col style={{ width: '12%' }} />
-                          </colgroup>
-                          <thead>
-                            <tr>
-                              <th>Sr</th>
-                              <th>Particulars</th>
-                              <th>Dispatch Qty</th>
-                              <th>Unit</th>
-                              <th>Link USN</th>
-                              <th>USN Sum</th>
-                              <th>Balance</th>
-                              <th>Remark</th>
-                              <th>Dispatch Form</th>
-                              <th>Pkg</th>
-                              <th>UQR</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {sheet.items.map((item) => (
-                              <tr key={item.id}>
-                                <td style={{ textAlign: 'center', fontWeight: 600 }}>{item.sr_no}</td>
-                                <td>{item.particulars || '—'}</td>
-                                <td>{item.dispatch_quantity}</td>
-                                <td>{item.unit || '—'}</td>
-                                <td>
-                                  <div className="oss-db-links">
-                                    {item.usn_links?.length ? item.usn_links.map((link) => (
-                                      <span key={link.id}>
-                                        {link.link_usn || '—'} ({link.usn_quantity})
-                                      </span>
-                                    )) : '—'}
-                                  </div>
-                                </td>
-                                <td>{item.usn_quantity_sum}</td>
-                                <td>
-                                  {item.balance}
-                                  {Number.parseFloat(item.balance) > 0 && (
-                                    <div className="oss-db-carry">{item.carry_forward_code} {item.balance}</div>
-                                  )}
-                                </td>
-                                <td>{item.remark || '—'}</td>
-                                <td>{item.dispatch_form || '—'}</td>
-                                <td>{item.num_packages}</td>
-                                <td>{item.uqr_sent ? 'Sent to verification' : '—'}</td>
+                      {/* Items table */}
+                      {sheet.items && sheet.items.length > 0 && (
+                        <div className="overflow-x-auto rounded-lg border border-[#e2e3e8] bg-card">
+                          <table className="w-full table-fixed border-collapse text-sm">
+                            <colgroup>
+                              <col style={{ width: '4%' }} />
+                              <col style={{ width: '14%' }} />
+                              <col style={{ width: '9%' }} />
+                              <col style={{ width: '8%' }} />
+                              <col style={{ width: '20%' }} />
+                              <col style={{ width: '9%' }} />
+                              <col style={{ width: '8%' }} />
+                              <col style={{ width: '10%' }} />
+                              <col style={{ width: '10%' }} />
+                              <col style={{ width: '8%' }} />
+                              <col style={{ width: '12%' }} />
+                            </colgroup>
+                            <thead>
+                              <tr>
+                                <th className={`${TH} text-center`}>Sr</th>
+                                <th className={TH}>Particulars</th>
+                                <th className={TH}>Dispatch Qty</th>
+                                <th className={TH}>Unit</th>
+                                <th className={TH}>Link USN</th>
+                                <th className={TH}>USN Sum</th>
+                                <th className={TH}>Balance</th>
+                                <th className={TH}>Remark</th>
+                                <th className={TH}>Dispatch Form</th>
+                                <th className={TH}>Pkg</th>
+                                <th className={TH}>UQR</th>
                               </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      )}
+                            </thead>
+                            <tbody>
+                              {sheet.items.map((item) => (
+                                <tr key={item.id} className="transition-colors hover:bg-muted/50">
+                                  <td className={`${TD} text-center font-semibold`}>
+                                    {item.sr_no}
+                                  </td>
+                                  <td className={TD}>{item.particulars || '—'}</td>
+                                  <td className={TD}>{item.dispatch_quantity}</td>
+                                  <td className={TD}>{item.unit || '—'}</td>
+                                  <td className={TD}>
+                                    <div className="flex flex-col gap-0.5 text-xs">
+                                      {item.usn_links?.length
+                                        ? item.usn_links.map((link) => (
+                                            <span key={link.id}>
+                                              {link.link_usn || '—'} ({link.usn_quantity})
+                                            </span>
+                                          ))
+                                        : '—'}
+                                    </div>
+                                  </td>
+                                  <td className={TD}>{item.usn_quantity_sum}</td>
+                                  <td className={TD}>
+                                    {item.balance}
+                                    {Number.parseFloat(item.balance) > 0 && (
+                                      <div className="mt-1 text-[10px] font-semibold text-primary">
+                                        {item.carry_forward_code} {item.balance}
+                                      </div>
+                                    )}
+                                  </td>
+                                  <td className={TD}>{item.remark || '—'}</td>
+                                  <td className={TD}>{item.dispatch_form || '—'}</td>
+                                  <td className={TD}>{item.num_packages}</td>
+                                  <td className={TD}>
+                                    {item.uqr_sent ? 'Sent to verification' : '—'}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
     </div>
   );
 };

@@ -1,4 +1,4 @@
-import React from 'react';
+import React from "react";
 
 const IMSContent = ({ onOpenInwardStoreSheet, onOpenStockSheet }) => {
   return (
@@ -16,8 +16,10 @@ const IMSContent = ({ onOpenInwardStoreSheet, onOpenStockSheet }) => {
           onClick={onOpenInwardStoreSheet}
         >
           <div className="button-content">
-            <span className="button-title">INWARD STORE SHEETS</span>
-            <span className="button-subtitle">Track and manage incoming inventory</span>
+            <span className="button-title">INWARD STORE LOGS</span>
+            <span className="button-subtitle">
+              Track and manage incoming inventory
+            </span>
           </div>
         </button>
 
@@ -26,18 +28,19 @@ const IMSContent = ({ onOpenInwardStoreSheet, onOpenStockSheet }) => {
           onClick={() => {}}
         >
           <div className="button-content">
-            <span className="button-title">OUTWARD STORE SHEETS</span>
-            <span className="button-subtitle">Track and manage outgoing inventory</span>
+            <span className="button-title">OUTWARD STORE LOGS</span>
+            <span className="button-subtitle">
+              Track and manage outgoing inventory
+            </span>
           </div>
         </button>
 
-        <button
-          className="fullscreen-action-button"
-          onClick={onOpenStockSheet}
-        >
+        <button className="fullscreen-action-button" onClick={onOpenStockSheet}>
           <div className="button-content">
             <span className="button-title">STOCK SHEET</span>
-            <span className="button-subtitle">Add stock items and view the master stock sheet</span>
+            <span className="button-subtitle">
+              Add stock items and view the master stock sheet
+            </span>
           </div>
         </button>
       </div>
