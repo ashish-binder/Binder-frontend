@@ -52,6 +52,21 @@ export const initializeRawMaterials = (formData) => {
         certifications: '',
         workOrders: [{
           workOrder: '',
+          receivedUnit: '',
+          processUnit: '',
+          dispatchUnit: '',
+          // Cut & Sew fills these per CUTTING / SEWING work order (Section-1 spec):
+          cutLength: '',
+          cutWidth: '',
+          cutUnit: '',
+          cutWastage: '',
+          sewLength: '',
+          sewWidth: '',
+          sewUnit: '',
+          sewWastage: '',
+          // Finishing (per FINISHING work order): process + types + remarks.
+          finishingProcess: '',
+          finishingTypes: [],
           isRequired: '',
           wastage: '',
           forField: '',

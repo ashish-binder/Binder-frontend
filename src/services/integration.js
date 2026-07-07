@@ -1347,6 +1347,30 @@ export const saveFactoryCodeDraft = async (payload, ipoId = null) => {
   return await response.json();
 };
 
+// Factory code SECTIONS (IPO Management) — per-section JSON store. Splits the big
+// draft so each wizard step saves/loads only its own compact slice, keyed by
+// (ipo, sku_key, section). Requires the 0018 migration applied on the backend.
+export const getFactoryCodeSection = async (ipoId, skuKey, section) => {
+  const q = `?ipo_id=${encodeURIComponent(ipoId)}&sku_key=${encodeURIComponent(skuKey)}&section=${encodeURIComponent(section)}`;
+  const response = await apiRequest(`ims/factory-codes/section/${q}`);
+  return await response.json(); // { payload: <slice> | null }
+};
+
+export const saveFactoryCodeSection = async (ipoId, skuKey, section, payload) => {
+  const q = `?ipo_id=${encodeURIComponent(ipoId)}&sku_key=${encodeURIComponent(skuKey)}&section=${encodeURIComponent(section)}`;
+  const response = await apiRequest(`ims/factory-codes/section/${q}`, {
+    method: 'PUT',
+    body: JSON.stringify({ payload }),
+  });
+  return await response.json();
+};
+
+// All saved section slices for an IPO (for rehydrate): { sections: [...] }.
+export const getFactoryCodeSections = async (ipoId) => {
+  const response = await apiRequest(`ims/factory-codes/sections/?ipo_id=${encodeURIComponent(ipoId)}`);
+  return await response.json();
+};
+
 // Fetch all committed factory codes for a single IPO (nested/complete shape).
 // Used by the IPC Spec restore path when the draft is missing or stale.
 export const getFactoryCodesByIpo = async (ipoId) => {

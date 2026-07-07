@@ -284,7 +284,7 @@ const Step2 = ({
       {/* Header with proper spacing */}
       <div style={{ marginBottom: '28px' }} className="flex justify-between items-center gap-4">
         <div>
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">PART-2 BILL OF MATERIAL & WORK IN PROGRESS</h2>
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">PART-1 BOM & WO (BILL OF MATERIAL & WORK ORDER)</h2>
           {/* <p className="text-sm text-gray-600">Bill of material & work in progress</p> */}
         </div>
         {renderHeaderAction}

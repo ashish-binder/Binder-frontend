@@ -20,6 +20,9 @@ const Step0 = ({
   removeSubproduct,
   handleSubproductChange,
   handleSubproductImageChange,
+  handleStep0ComponentChange,
+  addStep0Component,
+  removeStep0Component,
   validateStep0,
   handleSave,
   handleNext,
@@ -73,6 +76,114 @@ const Step0 = ({
 
   const handleProductChange = (skuIndex, value) => {
     handleSkuChange(skuIndex, 'product', value);
+  };
+
+  // Error-key convention must match validateStep0 / step0ComponentErrorKey in
+  // the orchestrator. subproductIndex == null → the SKU itself.
+  const componentErrKey = (skuIndex, subproductIndex, componentIndex, field) =>
+    subproductIndex == null
+      ? `sku_${skuIndex}_component_${componentIndex}_${field}`
+      : `subproduct_${skuIndex}_${subproductIndex}_component_${componentIndex}_${field}`;
+
+  // COMPONENT + ASSIGN PLACEMENT list, rendered on both the SKU card and each
+  // subproduct card. Bound to <entity>.stepData.products[0].components[] — the
+  // same array Cut & Sew reads, so entries here pre-fill that step.
+  const renderComponentsSection = (skuIndex, subproductIndex) => {
+    const entity = subproductIndex == null
+      ? formData.skus?.[skuIndex]
+      : formData.skus?.[skuIndex]?.subproducts?.[subproductIndex];
+    const components = entity?.stepData?.products?.[0]?.components || [];
+    return (
+      <div className="border-t border-border" style={{ marginTop: '16px', paddingTop: '12px' }}>
+        <div className="flex items-center justify-between" style={{ marginBottom: '8px' }}>
+          <label className="text-sm font-semibold text-foreground">
+            COMPONENTS <span className="text-red-600">*</span>
+            <span className="text-xs font-normal text-muted-foreground" style={{ marginLeft: '8px' }}>
+              Name each component and assign its placement
+            </span>
+          </label>
+          <Button
+            type="button"
+            onClick={() => addStep0Component(skuIndex, subproductIndex)}
+            variant="outline"
+            size="sm"
+          >
+            + Add Component
+          </Button>
+        </div>
+
+        <div className="flex flex-col" style={{ gap: '6px' }}>
+          {components.map((component, componentIndex) => (
+            <div
+              key={componentIndex}
+              className="flex flex-wrap items-center rounded-lg border border-border bg-muted/40"
+              style={{ gap: '10px', padding: '8px 10px' }}
+            >
+              <Field
+                label="COMPONENT"
+                required
+                error={errors[componentErrKey(skuIndex, subproductIndex, componentIndex, 'productComforter')]}
+                width="md"
+                style={{ marginBottom: 0 }}
+              >
+                {/* Free-text component name (not a dropdown). */}
+                <Input
+                  type="text"
+                  value={component.productComforter || ''}
+                  onChange={(e) => handleStep0ComponentChange(skuIndex, subproductIndex, componentIndex, 'productComforter', e.target.value)}
+                  placeholder="Type component name"
+                  className={errors[componentErrKey(skuIndex, subproductIndex, componentIndex, 'productComforter')] ? 'border-destructive' : ''}
+                />
+              </Field>
+              <Field
+                label="ASSIGN PLACEMENT"
+                required
+                error={errors[componentErrKey(skuIndex, subproductIndex, componentIndex, 'placement')]}
+                width="md"
+                style={{ marginBottom: 0 }}
+              >
+                {/* Placement adapts to how many components this entity has:
+                    1 → TOP PLACEMENT · 2 → TOP/BOTTOM · 3+ → free text. */}
+                {(() => {
+                  const n = components.length;
+                  const opts = n === 1 ? ['TOP PLACEMENT'] : n === 2 ? ['TOP PLACEMENT', 'BOTTOM PLACEMENT'] : null;
+                  const errCls = errors[componentErrKey(skuIndex, subproductIndex, componentIndex, 'placement')] ? 'border-destructive' : '';
+                  return opts ? (
+                    <SearchableDropdown
+                      value={component.placement || ''}
+                      onChange={(value) => handleStep0ComponentChange(skuIndex, subproductIndex, componentIndex, 'placement', value)}
+                      options={opts}
+                      placeholder="Select placement"
+                      strictMode
+                      className={errCls}
+                    />
+                  ) : (
+                    <Input
+                      type="text"
+                      value={component.placement || ''}
+                      onChange={(e) => handleStep0ComponentChange(skuIndex, subproductIndex, componentIndex, 'placement', e.target.value)}
+                      placeholder="Type placement"
+                      className={errCls}
+                    />
+                  );
+                })()}
+              </Field>
+              {components.length > 1 && (
+                <button
+                  type="button"
+                  onClick={() => removeStep0Component(skuIndex, subproductIndex, componentIndex)}
+                  className="ml-auto self-center text-xs font-medium text-destructive hover:underline"
+                  style={{ marginTop: '18px' }}
+                  title="Remove component"
+                >
+                  Remove
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+    );
   };
 
   const onSave = () => {
@@ -355,6 +466,9 @@ const Step0 = ({
               </div>
             </div>
 
+            {/* Components + Assign Placement (pre-fills Cut & Sew) */}
+            {renderComponentsSection(skuIndex, null)}
+
             {/* Subproducts List */}
             {sku.subproducts && sku.subproducts.length > 0 ? (
               <div className="mt-10 pt-4" style={{ marginTop: '24px' }}>
@@ -534,6 +648,9 @@ const Step0 = ({
                         </div>
                       </div>
                     </div>
+
+                    {/* Subproduct components + assign placement (pre-fills Cut & Sew) */}
+                    {renderComponentsSection(skuIndex, subproductIndex)}
                     </div>
                   </div>
                 ))}
