@@ -1,50 +1,49 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { Field } from '@/components/ui/field';
-import { Input } from '@/components/ui/input';
-import { PercentInput } from '@/components/ui/percent-input';
 import { cn } from '@/lib/utils';
+import SpecSection from '../cutting/SpecSection';
+import ProcessSection from '../cutting/ProcessSection';
+import FinishingSection from '../finishing/FinishingSection';
 
+// PART-3 "Cut, Sew & Finishing". Tabs: Cutting | Sewing | Finishing.
+// Cutting & Sewing each have Section-1 (spec) + Section-2 (process), rendered by
+// the shared generic SpecSection / ProcessSection. Finishing is a placeholder.
+// All data is draft-backed (stepData); size lives per work order, process
+// assignments in stepData.processAssignments (see the orchestrator handlers).
 const Step1 = ({
   formData,
   errors,
-  addComponent,
-  removeComponent,
-  handleComponentChange,
-  handleComponentCuttingSizeChange,
-  handleComponentSewSizeChange,
+  handleWorkOrderChange,
+  removeWorkOrder,
+  clubComponents,
+  unclubClub,
+  propagateClubs,
+  markSewMovedToAssembly,
+  onProceedToSelector,
   validateStep1,
   handleSave,
-  handleNext,
   showSaveMessage = false,
   isSaved: parentIsSaved = false,
   onValidationFail,
   renderHeaderAction,
 }) => {
   const [saveStatus, setSaveStatus] = useState('idle'); // 'idle' | 'success' | 'error'
-  const [isSaved, setIsSaved] = useState(parentIsSaved);
-  const prevComponentsLengthRef = useRef(null);
+  // Start "unsaved" — the button turns green only after an actual Save in this
+  // view, so an unfilled step never falsely reads as "Saved" on entry.
+  const [isSaved, setIsSaved] = useState(false);
+  const [activeTab, setActiveTab] = useState('cutting'); // 'cutting' | 'sewing' | 'finishing'
+  const [cuttingSection, setCuttingSection] = useState('spec'); // 'spec' | 'process'
+  const [sewingSection, setSewingSection] = useState('spec');
+  const assignments = formData?.processAssignments || { cutting: { clubs: [] }, sewing: { clubs: [] } };
 
-  // Sync from parent when parent clears saved state
   useEffect(() => {
-    setIsSaved(parentIsSaved);
-    if (parentIsSaved) {
-      setSaveStatus('success');
-    } else {
+    // Only reflect the *unsaved* signal from the parent (e.g. after an edit).
+    // Never auto-show "Saved" — that only happens via an actual Save (onSave).
+    if (!parentIsSaved) {
+      setIsSaved(false);
       setSaveStatus('idle');
     }
   }, [parentIsSaved]);
-
-  // When user adds/removes a component, formData updates here first – reset to "Save" immediately
-  const components = formData?.products?.[0]?.components ?? [];
-  const componentsLength = components.length;
-  useEffect(() => {
-    if (prevComponentsLengthRef.current !== null && prevComponentsLengthRef.current !== componentsLength) {
-      setSaveStatus('idle');
-      setIsSaved(false);
-    }
-    prevComponentsLengthRef.current = componentsLength;
-  }, [componentsLength]);
 
   const onSave = () => {
     if (validateStep1) {
@@ -52,309 +51,145 @@ const Step1 = ({
       if (!result.isValid) {
         setSaveStatus('error');
         setTimeout(() => setSaveStatus('idle'), 3000);
-        if (onValidationFail) {
-          onValidationFail(result.errors);
-        }
-        return;
+        onValidationFail?.(result.errors);
+        return false;
       }
     }
-    if (handleSave) {
-      handleSave();
-      setSaveStatus('success');
-      setIsSaved(true);
-    }
+    handleSave?.();
+    setSaveStatus('success');
+    setIsSaved(true);
+    return true;
   };
 
-  const selectBaseClass =
-    "border-input h-11 w-full min-w-0 rounded-md border bg-white text-sm shadow-xs transition-[color,box-shadow] outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50";
+  // Save this step, then advance to the given tab.
+  const saveAndGo = (tab) => { onSave(); setActiveTab(tab); };
+
+  const tabBtn = (key, active) =>
+    `rounded-lg border px-4 py-2 text-sm font-medium ${active ? 'border-primary bg-accent text-foreground' : 'border-border text-muted-foreground hover:bg-muted/50'}`;
+  const sectionBtn = (active) =>
+    `rounded-md border px-3 py-1.5 text-xs font-medium ${active ? 'border-primary bg-background' : 'border-border text-muted-foreground hover:bg-background/60'}`;
+
+  // Cutting/Sewing tab body = section toggle + Spec / Process section.
+  const renderProcessTab = ({ woType, prefix, sizeLabel, kind, section, setSection, modeAction, finalAction }) => (
+    <div className="rounded-2xl border border-border bg-muted/60" style={{ padding: '16px', marginBottom: '24px' }}>
+      <div className="flex flex-wrap gap-2" style={{ marginBottom: '18px' }}>
+        <button type="button" onClick={() => setSection('spec')} className={sectionBtn(section === 'spec')}>Section 1 · Spec</button>
+        <button type="button" onClick={() => setSection('process')} className={sectionBtn(section === 'process')}>Section 2 · Process</button>
+      </div>
+      {section === 'spec' ? (
+        <>
+          <SpecSection
+            formData={formData}
+            errors={errors}
+            woType={woType}
+            prefix={prefix}
+            sizeLabel={sizeLabel}
+            handleWorkOrderChange={handleWorkOrderChange}
+            removeWorkOrder={removeWorkOrder}
+          />
+          {/* Linear flow: Spec → Process (of the same tab). */}
+          <div className="flex justify-end" style={{ marginTop: '16px' }}>
+            <Button type="button" onClick={() => setSection('process')}>Next →</Button>
+          </div>
+        </>
+      ) : (
+        <ProcessSection
+          formData={formData}
+          woType={woType}
+          prefix={prefix}
+          kind={kind}
+          clubs={assignments[kind]?.clubs || []}
+          clubComponents={clubComponents}
+          unclubClub={unclubClub}
+          modeAction={modeAction}
+          finalAction={finalAction}
+        />
+      )}
+    </div>
+  );
 
   return (
-    <div className="w-full">
+    <div className="w-full" style={{ maxWidth: '1040px' }}>
       {/* Header */}
-      <div style={{ marginBottom: '24px' }} className="flex justify-between items-center gap-4">
-        <div>
-          <h2 className="text-2xl font-bold tracking-tight text-foreground mb-1">PART-1 CUT &amp; SEW SPEC</h2>
-          <p className="text-sm text-muted-foreground">Enter cutting and sewing specifications for components</p>
+      <div style={{ marginBottom: '20px' }} className="flex flex-wrap justify-between items-start gap-3">
+        <div className="min-w-0">
+          <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-foreground mb-1">PART-3 CUT, SEW &amp; FINISHING</h2>
+          <p className="text-sm text-muted-foreground">Cutting, sewing and finishing specifications per component</p>
         </div>
         {renderHeaderAction}
       </div>
 
-      {/* Components Section - Work with first product's components */}
-      {formData.products && formData.products.length > 0 && formData.products[0] && (
-        <div
-          className="rounded-2xl border border-border bg-muted"
-          style={{ padding: '24px 20px', marginBottom: '24px' }}
-        >
-          <div style={{ marginBottom: '16px' }}>
-            <h3 className="text-lg font-semibold text-foreground/90">Components</h3>
-          </div>
+      {/* Cut, Sew & Finishing tabs + step Save */}
+      <div className="flex flex-wrap items-center justify-between gap-3" style={{ marginBottom: '20px' }}>
+        <div className="flex flex-wrap gap-2">
+          {[['cutting', 'Cutting'], ['sewing', 'Sewing'], ['finishing', 'Finishing']].map(([key, label]) => (
+            <button key={key} type="button" onClick={() => setActiveTab(key)} className={tabBtn(key, activeTab === key)}>{label}</button>
+          ))}
+        </div>
+        <div className="flex items-center gap-3">
+          {showSaveMessage && <span className="text-red-600 text-sm font-medium">Save first</span>}
+          <Button
+            type="button"
+            onClick={onSave}
+            variant="outline"
+            className={cn('min-w-[90px]', saveStatus === 'error' ? 'text-red-600 border-red-500 hover:text-red-700' : isSaved || saveStatus === 'success' ? 'text-green-600 hover:text-green-700' : '')}
+          >
+            {saveStatus === 'error' ? 'Not Saved' : isSaved || saveStatus === 'success' ? 'Saved' : 'Save'}
+          </Button>
+        </div>
+      </div>
 
-          {/* Components List */}
-          {formData.products[0].components.map((component, componentIndex) => (
-              <div
-                key={componentIndex}
-                id={`component-0-${componentIndex}`}
-                className="bg-card rounded-xl border border-border"
-                style={{ padding: '20px 18px', marginBottom: '16px' }}
-              >
-                <div className="flex items-center justify-between" style={{ marginBottom: '16px' }}>
-                  <h4 className="text-sm font-semibold text-foreground/80">COMPONENT {component.srNo}</h4>
-                  {formData.products[0].components.length > 1 && (
-                    <Button
-                      type="button"
-                      onClick={() => removeComponent(0, componentIndex)}
-                      variant="outline"
-                      size="sm"
-                      className="text-destructive hover:text-destructive"
-                    >
-                      Remove
-                    </Button>
-                  )}
-                </div>
+      {activeTab === 'cutting' && renderProcessTab({
+        woType: 'CUTTING', prefix: 'cut', sizeLabel: 'CUT SIZE', kind: 'cutting',
+        section: cuttingSection, setSection: setCuttingSection,
+        // Cutting: save + carry the club grouping into Sewing (clubs together,
+        // singles alone), show the popup, and open Sewing on Continue.
+        modeAction: {
+          label: 'Save & Forward to Sewing Line',
+          onClick: () => { onSave(); propagateClubs?.('cutting', 'sewing'); },
+          notice: 'Saved and moved to the sewing line.',
+          onContinue: () => { setSewingSection('spec'); setActiveTab('sewing'); },
+        },
+      })}
 
-                {/* Component Details */}
-                <div className="flex flex-wrap items-start gap-4" style={{ marginBottom: '20px' }}>
-                  <Field
-                    label="NAME"
-                    required
-                    error={errors[`product_0_component_${componentIndex}_productComforter`]}
-                    width="sm"
-                  >
-                    <Input
-                      type="text"
-                      value={component.productComforter}
-                      onChange={(e) => handleComponentChange(0, componentIndex, 'productComforter', e.target.value)}
-                      placeholder="e.g., Top Panel"
-                      aria-invalid={errors[`product_0_component_${componentIndex}_productComforter`] ? true : undefined}
-                      className={errors[`product_0_component_${componentIndex}_productComforter`] ? 'border-destructive' : ''}
-                      required
-                    />
-                  </Field>
+      {activeTab === 'sewing' && renderProcessTab({
+        woType: 'SEWING', prefix: 'sew', sizeLabel: 'SEW SIZE', kind: 'sewing',
+        section: sewingSection, setSection: setSewingSection,
+        // Sewing: per-mode "move to assembly" (save + popup + remembered flag);
+        // final "forward to pack" enabled only when every component is assigned.
+        modeAction: {
+          label: 'Save & Move to IPC Assembly',
+          onClick: () => { onSave(); markSewMovedToAssembly?.(); },
+          notice: 'This stitching is now moving to the assembly line.',
+        },
+        finalAction: {
+          label: 'Sew as IPC & Forward to Pack',
+          onClick: () => saveAndGo('finishing'),
+          requireAllAssigned: true,
+        },
+      })}
 
-                  <Field
-                    label="UNIT"
-                    required
-                    error={errors[`product_0_component_${componentIndex}_unit`]}
-                    width="sm"
-                  >
-                    <select
-                      value={component.unit}
-                      onChange={(e) => handleComponentChange(0, componentIndex, 'unit', e.target.value)}
-                      className={cn(
-                        selectBaseClass,
-                        errors[`product_0_component_${componentIndex}_unit`] && "aria-invalid border-destructive"
-                      )}
-                      style={{ paddingLeft: '1.25rem', paddingRight: '0.75rem' }}
-                      aria-invalid={errors[`product_0_component_${componentIndex}_unit`] ? true : undefined}
-                      required
-                    >
-                      <option value="">Select</option>
-                      <option value="CM">CM</option>
-                      <option value="KGS">KGS</option>
-                    </select>
-                  </Field>
-
-                  <Field
-                    label="GSM"
-                    required
-                    error={errors[`product_0_component_${componentIndex}_gsm`]}
-                    width="sm"
-                  >
-                    <Input
-                      type="number"
-                      value={component.gsm || ''}
-                      onChange={(e) => handleComponentChange(0, componentIndex, 'gsm', e.target.value)}
-                      placeholder="e.g., 200"
-                      aria-invalid={errors[`product_0_component_${componentIndex}_gsm`] ? true : undefined}
-                      className={errors[`product_0_component_${componentIndex}_gsm`] ? 'border-destructive' : ''}
-                      required
-                    />
-                  </Field>
-
-                  <Field
-                    label="WASTAGE %"
-                    required
-                    error={errors[`product_0_component_${componentIndex}_wastage`]}
-                    width="sm"
-                  >
-                    <PercentInput
-                      value={component.wastage || ''}
-                      onChange={(e) => handleComponentChange(0, componentIndex, 'wastage', e.target.value)}
-                      placeholder="e.g., 5"
-                      error={errors[`product_0_component_${componentIndex}_wastage`]}
-                      className={errors[`product_0_component_${componentIndex}_wastage`] ? 'border-destructive' : ''}
-                      required
-                    />
-                  </Field>
-                </div>
-
-                {/* Cutting Size */}
-                <div style={{ marginBottom: '20px' }}>
-                  <h4 className="text-sm font-semibold text-foreground/80" style={{ marginBottom: '12px' }}>
-                    CUTTING SIZE
-                  </h4>
-                  <div className="flex flex-wrap items-start gap-4">
-                    {component.unit === 'KGS' ? (
-                      <Field
-                        label="CONSUMPTION"
-                        required
-                        error={errors[`product_0_component_${componentIndex}_cuttingConsumption`]}
-                        width="sm"
-                      >
-                        <Input
-                          type="number"
-                          value={component.cuttingSize.consumption || ''}
-                          onChange={(e) => handleComponentCuttingSizeChange(0, componentIndex, 'consumption', e.target.value)}
-                          placeholder="e.g., 2.5"
-                          aria-invalid={errors[`product_0_component_${componentIndex}_cuttingConsumption`] ? true : undefined}
-                          className={errors[`product_0_component_${componentIndex}_cuttingConsumption`] ? 'border-destructive' : ''}
-                          required
-                        />
-                      </Field>
-                    ) : (
-                      <>
-                        <Field
-                          label="LENGTH"
-                          required
-                          error={errors[`product_0_component_${componentIndex}_cuttingLength`]}
-                          width="sm"
-                        >
-                          <Input
-                            type="number"
-                            value={component.cuttingSize.length}
-                            onChange={(e) => handleComponentCuttingSizeChange(0, componentIndex, 'length', e.target.value)}
-                            placeholder="e.g., 24"
-                            aria-invalid={errors[`product_0_component_${componentIndex}_cuttingLength`] ? true : undefined}
-                            className={errors[`product_0_component_${componentIndex}_cuttingLength`] ? 'border-destructive' : ''}
-                            required
-                          />
-                        </Field>
-
-                        <Field
-                          label="WIDTH"
-                          required
-                          error={errors[`product_0_component_${componentIndex}_cuttingWidth`]}
-                          width="sm"
-                        >
-                          <Input
-                            type="number"
-                            value={component.cuttingSize.width}
-                            onChange={(e) => handleComponentCuttingSizeChange(0, componentIndex, 'width', e.target.value)}
-                            placeholder="e.g., 18"
-                            aria-invalid={errors[`product_0_component_${componentIndex}_cuttingWidth`] ? true : undefined}
-                            className={errors[`product_0_component_${componentIndex}_cuttingWidth`] ? 'border-destructive' : ''}
-                            required
-                          />
-                        </Field>
-                      </>
-                    )}
-                  </div>
-                </div>
-
-                {/* Sew Size */}
-                <div style={{ marginTop: '8px' }}>
-                  <h4 className="text-sm font-semibold text-foreground/80" style={{ marginBottom: '12px' }}>
-                    SEW SIZE
-                  </h4>
-                  <div className="flex flex-wrap items-start gap-4">
-                    {component.unit === 'KGS' ? (
-                      <Field
-                        label="CONSUMPTION"
-                        required
-                        error={errors[`product_0_component_${componentIndex}_sewConsumption`]}
-                        width="sm"
-                      >
-                        <Input
-                          type="number"
-                          value={component.sewSize.consumption || ''}
-                          onChange={(e) => handleComponentSewSizeChange(0, componentIndex, 'consumption', e.target.value)}
-                          placeholder="e.g., 2.3"
-                          aria-invalid={errors[`product_0_component_${componentIndex}_sewConsumption`] ? true : undefined}
-                          className={errors[`product_0_component_${componentIndex}_sewConsumption`] ? 'border-destructive' : ''}
-                          required
-                        />
-                      </Field>
-                    ) : (
-                      <>
-                        <Field
-                          label="LENGTH"
-                          required
-                          error={errors[`product_0_component_${componentIndex}_sewLength`]}
-                          width="sm"
-                        >
-                          <Input
-                            type="number"
-                            value={component.sewSize.length}
-                            onChange={(e) => handleComponentSewSizeChange(0, componentIndex, 'length', e.target.value)}
-                            placeholder="e.g., 22"
-                            aria-invalid={errors[`product_0_component_${componentIndex}_sewLength`] ? true : undefined}
-                            className={errors[`product_0_component_${componentIndex}_sewLength`] ? 'border-destructive' : ''}
-                            required
-                          />
-                        </Field>
-
-                        <Field
-                          label="WIDTH"
-                          required
-                          error={errors[`product_0_component_${componentIndex}_sewWidth`]}
-                          width="sm"
-                        >
-                          <Input
-                            type="number"
-                            value={component.sewSize.width}
-                            onChange={(e) => handleComponentSewSizeChange(0, componentIndex, 'width', e.target.value)}
-                            placeholder="e.g., 16"
-                            aria-invalid={errors[`product_0_component_${componentIndex}_sewWidth`] ? true : undefined}
-                            className={errors[`product_0_component_${componentIndex}_sewWidth`] ? 'border-destructive' : ''}
-                            required
-                          />
-                        </Field>
-                      </>
-                    )}
-                  </div>
-                </div>
+      {activeTab === 'finishing' && (
+        <div className="rounded-2xl border border-border bg-muted" style={{ padding: '20px', marginBottom: '24px' }}>
+          <FinishingSection formData={formData} handleWorkOrderChange={handleWorkOrderChange} />
+          {(() => {
+            // Mandatory: every FINISHING work order must have a process + a type.
+            const finWos = (formData?.rawMaterials || []).flatMap((m) =>
+              (m.workOrders || []).filter((wo) => wo?.workOrder === 'FINISHING'));
+            const finishingComplete = finWos.every((wo) => wo.finishingProcess?.toString().trim() && (wo.finishingTypes || []).length > 0);
+            return (
+              <div className="flex items-center justify-end gap-3" style={{ marginTop: '16px' }}>
+                {!finishingComplete && <span className="text-xs text-amber-600">Fill Finishing Process + Type for every component's finishing work order.</span>}
+                <Button
+                  type="button"
+                  disabled={!finishingComplete}
+                  onClick={() => { onSave(); onProceedToSelector?.(); }}
+                >
+                  Save &amp; Proceed to Packaging →
+                </Button>
               </div>
-            ))}
-
-          {/* Save + Add Component Buttons (same pattern as Step-0) */}
-          <div style={{ marginTop: '16px', display: 'flex', gap: '16px', alignItems: 'center' }}>
-            <Button
-              type="button"
-              onClick={onSave}
-              variant="outline"
-              className={cn(
-                'min-w-[90px]',
-                saveStatus === 'error'
-                  ? 'text-red-600 border-red-500 hover:text-red-700'
-                  : isSaved || saveStatus === 'success'
-                    ? 'text-green-600 hover:text-green-700'
-                    : ''
-              )}
-            >
-              {saveStatus === 'error'
-                ? 'Not Saved'
-                : isSaved || saveStatus === 'success'
-                  ? 'Saved'
-                  : 'Save'}
-            </Button>
-            <Button
-              type="button"
-              onClick={() => {
-                const currentLength = formData.products[0]?.components?.length || 0;
-                addComponent(0);
-                const newIndex = currentLength;
-                setTimeout(() => {
-                  const element = document.getElementById(`component-0-${newIndex}`);
-                  if (element) {
-                    element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                  }
-                }, 100);
-              }}
-              variant="outline"
-            >
-              Add Component
-            </Button>
-          </div>
+            );
+          })()}
         </div>
       )}
     </div>

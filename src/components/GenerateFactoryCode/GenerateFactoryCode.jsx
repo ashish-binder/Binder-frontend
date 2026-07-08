@@ -15,7 +15,7 @@ import { FormCard } from '@/components/ui/form-layout';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
 import { X } from 'lucide-react';
-import { saveFactoryCodeWizard, getFactoryCodeDraft, saveFactoryCodeDraft, getFactoryCodesByIpo } from '../../services/integration';
+import { saveFactoryCodeWizard, getFactoryCodeDraft, saveFactoryCodeDraft, getFactoryCodesByIpo, saveFactoryCodeSection } from '../../services/integration';
 import { replaceFilesWithBlobUrls, uploadToBlob } from '../../services/blobUpload';
 import { scrollToFirstError } from '@/utils/scrollToFirstError';
 import { hydrateSkusFromFactoryCodes, mergeDraftOverCommitted } from './utils/hydrateFromCommitted';
@@ -244,6 +244,10 @@ const GenerateFactoryCode = ({
   const [step3Saved, setStep3Saved] = useState(false); // Step-3 = Artwork / Labelling
   const [step3SaveStatus, setStep3SaveStatus] = useState('idle'); // 'idle' | 'success' | 'error'
   const [step4Saved, setStep4Saved] = useState(false); // Last step = Packaging
+  // Server (DB) save status for the whole IPC draft. The IPC Spec is a weeks-long
+  // process, so users must SEE whether each Save actually reached the DB (not just
+  // this device). 'idle' | 'saving' | 'saved' | 'error' | 'local' (no IPO yet).
+  const [serverSaveState, setServerSaveState] = useState('idle');
   const [step4SaveStatus, setStep4SaveStatus] = useState('idle'); // 'idle' | 'success' | 'error'
   const [showSaveMessage, setShowSaveMessage] = useState(false); // Show "save first" message
   const [saveMessage, setSaveMessage] = useState(''); // Message to display
@@ -283,6 +287,7 @@ const GenerateFactoryCode = ({
           components: [{
             srNo: 1,
             productComforter: '',
+            placement: '',
             unit: '',
             gsm: '',
             wastage: '',
@@ -444,6 +449,7 @@ const GenerateFactoryCode = ({
       components: [{
         srNo: 1,
         productComforter: '',
+        placement: '',
         unit: '',
         gsm: '',
         wastage: '',
@@ -724,11 +730,37 @@ const GenerateFactoryCode = ({
       // Scope the draft to the current IPO so switching between IPOs
       // doesn't clobber each other's work.
       const draftIpoId = initialFormData?.ipoId || normalizedPayload?.ipoId || null;
-      saveFactoryCodeDraft(normalizedPayload, draftIpoId).catch((e) => console.warn('Draft save failed', e));
+      if (!draftIpoId) {
+        // Pre-IPO scratchpad: no IPO to attach to yet, so this can only live in
+        // localStorage until the IPO is created. Surface that clearly.
+        setServerSaveState('local');
+        return;
+      }
+      // Persist to the DB (Postgres) and reflect the real outcome so a failed
+      // server save never masquerades as "Saved". Fire-and-forget for the UI
+      // thread, but the status updates when it resolves.
+      setServerSaveState('saving');
+      saveFactoryCodeDraft(normalizedPayload, draftIpoId)
+        .then(() => setServerSaveState('saved'))
+        .catch((e) => {
+          console.warn('Draft save failed', e);
+          setServerSaveState('error');
+        });
     }
   };
 
   const saveCurrentFormState = () => saveToLocalStorage(latestFormDataRef.current);
+
+  // Mirror a step's slice into the per-section DB store (IPO Management). Additive
+  // and guarded: never blocks the draft save; no-op before the IPO exists. This is
+  // what makes the section store the DB source of truth going forward (§Change 7);
+  // the draft still holds everything until the trim/rehydrate cutover is verified.
+  const persistSection = (section, slice) => {
+    const skuKey = selectedSku != null ? String(selectedSku) : '';
+    if (!formData.ipoId || !skuKey) return;
+    saveFactoryCodeSection(formData.ipoId, skuKey, section, slice)
+      .catch((e) => console.warn(`Section '${section}' save failed`, e));
+  };
 
   const loadFromLocalStorage = (ipoCode) => {
     try {
@@ -952,9 +984,10 @@ const GenerateFactoryCode = ({
   const totalSteps = 4;
 
 
-  // IPC-First: Per-IPC steps (0=Cut, 1=Raw, 2=Artwork)
+  // IPC-First: Per-IPC sub-steps in visual order (Change 3 reorder):
+  //   0 = BOM & WO, 1 = Artwork & Labeling, 2 = Cut & Sew Spec.
   const ipcFlowTotalSteps = 2;
-  const ipcFlowStepLabels = ['Cut & Sew Spec', 'BOM & WIP', 'Artwork & Labeling'];
+  const ipcFlowStepLabels = ['BOM & WO', 'Artwork & Labeling', 'Cut & Sew Spec'];
 
 
   // Init shipping groups when Factory Code popup opens
@@ -1119,6 +1152,7 @@ const GenerateFactoryCode = ({
       components: [{
         srNo: 1,
         productComforter: '',
+        placement: '',
         unit: '',
         gsm: '',
         wastage: '',
@@ -1272,6 +1306,10 @@ const GenerateFactoryCode = ({
       artwork: false,
     },
     rawSavedComponents: [],
+    // Cut & Sew Section-2 (process): clubbing like IPO Master CNS. Per kind, a list
+    // of clubs (groups of >=2 components processed together); anything not in a club
+    // is SINGLE (isolation). Namespaced so Cutting and Sewing stay independent.
+    processAssignments: { cutting: { clubs: [] }, sewing: { clubs: [] } },
   });
 
   const addSku = () => {
@@ -1546,6 +1584,12 @@ const GenerateFactoryCode = ({
           : initial.packaging.materials,
         extraPacks: Array.isArray(basePackaging.extraPacks) ? basePackaging.extraPacks : [],
       },
+      // Process assignments (Cut & Sew Section-2) — clubs per kind. Default for old
+      // drafts; earlier shapes (assignment maps) are simply reset to empty clubs.
+      processAssignments: {
+        cutting: { clubs: Array.isArray(base.processAssignments?.cutting?.clubs) ? base.processAssignments.cutting.clubs : [] },
+        sewing: { clubs: Array.isArray(base.processAssignments?.sewing?.clubs) ? base.processAssignments.sewing.clubs : [] },
+      },
     };
   };
 
@@ -1650,6 +1694,18 @@ const GenerateFactoryCode = ({
         newErrors[`deliveryDueDate_${skuIndex}`] = 'Delivery Due Date is required';
       }
 
+      // Components: name + placement are assigned here (Product Spec) and
+      // pre-fill the Cut & Sew step. Both are required per component.
+      const skuComponents = sku.stepData?.products?.[0]?.components || [];
+      skuComponents.forEach((component, componentIndex) => {
+        if (!component.productComforter?.trim()) {
+          newErrors[`sku_${skuIndex}_component_${componentIndex}_productComforter`] = 'Component is required';
+        }
+        if (!component.placement?.trim()) {
+          newErrors[`sku_${skuIndex}_component_${componentIndex}_placement`] = 'Placement is required';
+        }
+      });
+
       // Validate subproducts if any
       if (sku.subproducts && sku.subproducts.length > 0) {
         sku.subproducts.forEach((subproduct, subIndex) => {
@@ -1674,6 +1730,17 @@ const GenerateFactoryCode = ({
           if (!subproduct.image) {
             newErrors[`subproduct_${skuIndex}_${subIndex}_image`] = 'Subproduct Image is required';
           }
+
+          // Subproduct components: name + placement required per component.
+          const spComponents = subproduct.stepData?.products?.[0]?.components || [];
+          spComponents.forEach((component, componentIndex) => {
+            if (!component.productComforter?.trim()) {
+              newErrors[`subproduct_${skuIndex}_${subIndex}_component_${componentIndex}_productComforter`] = 'Component is required';
+            }
+            if (!component.placement?.trim()) {
+              newErrors[`subproduct_${skuIndex}_${subIndex}_component_${componentIndex}_placement`] = 'Placement is required';
+            }
+          });
         });
       }
     });
@@ -1684,68 +1751,13 @@ const GenerateFactoryCode = ({
   };
 
   const validateStep1 = () => {
-    const newErrors = {};
-    
-    // Get selected SKU's step data
-    const stepData = getSelectedSkuStepData();
-    if (!stepData || !stepData.products) {
-      newErrors['products'] = 'Products data is required';
-      setErrors(newErrors);
-      return { isValid: false, errors: newErrors };
-    }
-    
-    // Validate products and their components
-    stepData.products.forEach((product, productIndex) => {
-      // Validate components for each product
-      product.components.forEach((component, componentIndex) => {
-        if (!component.productComforter?.trim()) {
-          newErrors[`product_${productIndex}_component_${componentIndex}_productComforter`] = 'Component name is required';
-        }
-        if (!component.unit?.trim()) {
-          newErrors[`product_${productIndex}_component_${componentIndex}_unit`] = 'Unit is required';
-        }
-        if (!component.gsm && component.gsm !== 0) {
-          newErrors[`product_${productIndex}_component_${componentIndex}_gsm`] = 'GSM is required';
-        }
-        if (!component.wastage && component.wastage !== 0) {
-          newErrors[`product_${productIndex}_component_${componentIndex}_wastage`] = 'Wastage is required';
-        }
-        // Validate cutting size for each component
-        if (component.unit === 'KGS') {
-          // For KGS, validate consumption field
-          if (!component.cuttingSize?.consumption && component.cuttingSize?.consumption !== 0) {
-            newErrors[`product_${productIndex}_component_${componentIndex}_cuttingConsumption`] = 'Cutting Consumption is required';
-          }
-        } else {
-          // For CM, validate length and width
-          if (!component.cuttingSize?.length && component.cuttingSize?.length !== 0) {
-            newErrors[`product_${productIndex}_component_${componentIndex}_cuttingLength`] = 'Cutting Length is required';
-          }
-          if (!component.cuttingSize?.width && component.cuttingSize?.width !== 0) {
-            newErrors[`product_${productIndex}_component_${componentIndex}_cuttingWidth`] = 'Cutting Width is required';
-          }
-        }
-        // Validate sew size for each component
-        if (component.unit === 'KGS') {
-          // For KGS, validate consumption field
-          if (!component.sewSize?.consumption && component.sewSize?.consumption !== 0) {
-            newErrors[`product_${productIndex}_component_${componentIndex}_sewConsumption`] = 'Sew Consumption is required';
-          }
-        } else {
-          // For CM, validate length and width
-          if (!component.sewSize?.length && component.sewSize?.length !== 0) {
-            newErrors[`product_${productIndex}_component_${componentIndex}_sewLength`] = 'Sew Length is required';
-          }
-          if (!component.sewSize?.width && component.sewSize?.width !== 0) {
-            newErrors[`product_${productIndex}_component_${componentIndex}_sewWidth`] = 'Sew Width is required';
-          }
-        }
-      });
-    });
-    
-    setErrors(newErrors);
-    const isValid = Object.keys(newErrors).length === 0;
-    return { isValid, errors: newErrors };
+    // Change 4: Cut & Sew is now the per-WO Cutting/Sewing spec + process sections
+    // (legacy per-component GSM/cut/sew-size form removed). Component names +
+    // placements are already required in Product Spec, and cut/sew sizes live on
+    // work orders. Phase A keeps this lenient (no hard-required fields) so Save is
+    // never blocked; per-WO size validation can be tightened in a later pass.
+    setErrors({});
+    return { isValid: true, errors: {} };
   };
 
 
@@ -1887,6 +1899,7 @@ const GenerateFactoryCode = ({
         components: [...currentComponents, {
           srNo: currentComponents.length + 1,
           productComforter: '',
+          placement: '',
           unit: '',
           gsm: '',
           wastage: '',
@@ -1896,6 +1909,165 @@ const GenerateFactoryCode = ({
       };
       return withUpdatedIpcSavedState({ ...stepData, products: updatedProducts }, { cut: false });
     });
+  };
+
+  // ---- Step 0 (Product Spec) component + placement entry ------------------
+  // Components are named (with placement assigned) on the Product Spec page and
+  // live in each entity's stepData.products[0].components — the SAME array the
+  // Cut & Sew step reads, so entries here pre-fill that step. The backend wizard
+  // payload already accepts component `name` + `placement`
+  // (utils/wizardPayload.js → sanitizeComponent), so this is additive and does
+  // NOT change the DB contract; pre-existing records simply had placement = ''.
+  const makeEmptyComponent = (srNo) => ({
+    srNo,
+    productComforter: '',
+    placement: '',
+    unit: '',
+    gsm: '',
+    wastage: '',
+    cuttingSize: { length: '', width: '' },
+    sewSize: { cns: '', length: '', width: '', netCns: '' },
+  });
+
+  // Update the components[] of a Product-Spec entity (subproductIndex == null →
+  // the SKU itself, else the given subproduct). Works directly on formData.skus
+  // because Step 0 renders every entity at once (no single "selected" SKU).
+  const updateStep0Components = (skuIndex, subproductIndex, updater) => {
+    setStep0Saved(false);
+    setFormData(prev => {
+      const skus = [...prev.skus];
+      const applyToEntity = (entity) => {
+        const stepData = ensureStepDataShape(entity.stepData);
+        const products = [...stepData.products];
+        const product0 = products[0] || { name: '', components: [] };
+        products[0] = { ...product0, components: updater(product0.components || []) };
+        return { ...entity, stepData: { ...stepData, products } };
+      };
+      if (subproductIndex == null) {
+        if (!skus[skuIndex]) return prev;
+        skus[skuIndex] = applyToEntity(skus[skuIndex]);
+      } else {
+        if (!skus[skuIndex]?.subproducts?.[subproductIndex]) return prev;
+        const subs = [...skus[skuIndex].subproducts];
+        subs[subproductIndex] = applyToEntity(subs[subproductIndex]);
+        skus[skuIndex] = { ...skus[skuIndex], subproducts: subs };
+      }
+      return { ...prev, skus };
+    });
+  };
+
+  const step0ComponentErrorKey = (skuIndex, subproductIndex, componentIndex, field) =>
+    subproductIndex == null
+      ? `sku_${skuIndex}_component_${componentIndex}_${field}`
+      : `subproduct_${skuIndex}_${subproductIndex}_component_${componentIndex}_${field}`;
+
+  const handleStep0ComponentChange = (skuIndex, subproductIndex, componentIndex, field, value) => {
+    updateStep0Components(skuIndex, subproductIndex, (components) =>
+      components.map((c, i) => (i === componentIndex ? { ...c, [field]: value } : c))
+    );
+    const errorKey = step0ComponentErrorKey(skuIndex, subproductIndex, componentIndex, field);
+    if (errors[errorKey]) {
+      setErrors(prev => {
+        const next = { ...prev };
+        delete next[errorKey];
+        return next;
+      });
+    }
+  };
+
+  const addStep0Component = (skuIndex, subproductIndex) => {
+    updateStep0Components(skuIndex, subproductIndex, (components) =>
+      [...components, makeEmptyComponent(components.length + 1)]
+    );
+  };
+
+  const removeStep0Component = (skuIndex, subproductIndex, componentIndex) => {
+    updateStep0Components(skuIndex, subproductIndex, (components) =>
+      components
+        .filter((_, i) => i !== componentIndex)
+        .map((c, i) => ({ ...c, srNo: i + 1 }))
+    );
+  };
+
+  // ---- Cut & Sew Section-1 (spec) ------------------------------------------
+  // Cut/Sew size (L/W/unit/wastage) is captured per CUTTING/SEWING work order and
+  // stored on the work order itself in stepData.rawMaterials (generic: `field` is
+  // e.g. cutLength or sewWidth). Units/material are FETCHED (read-only) from BOM.
+  const handleWoSpecChange = (actualIndex, woIndex, field, value) => {
+    setStep1Saved(false);
+    updateSelectedSkuStepData((stepData) => {
+      const rawMaterials = [...(stepData.rawMaterials || [])];
+      const material = rawMaterials[actualIndex];
+      if (!material?.workOrders?.[woIndex]) return stepData;
+      const workOrders = [...material.workOrders];
+      workOrders[woIndex] = { ...workOrders[woIndex], [field]: value };
+      rawMaterials[actualIndex] = { ...material, workOrders };
+      return withUpdatedIpcSavedState({ ...stepData, rawMaterials }, { cut: false });
+    });
+  };
+
+  // ---- Cut & Sew Section-2 (process) — clubbing (like IPO Master CNS) ------
+  // Per process `kind` ('cutting' | 'sewing'), components default to SINGLE
+  // (isolation, processed separately). Selecting >=2 and clubbing groups them into
+  // a "Club N" (processed together). Stored as
+  // stepData.processAssignments[kind] = { clubs: [{ id, label, components: [] }] }.
+  const clubComponents = (kind, componentNames) => {
+    if (!componentNames || componentNames.length < 2) return;
+    setStep1Saved(false);
+    updateSelectedSkuStepData((stepData) => {
+      const pa = stepData.processAssignments || {};
+      const existing = Array.isArray(pa[kind]?.clubs) ? pa[kind].clubs : [];
+      // Drop these components from any existing club, then add the new group.
+      const kept = existing
+        .map((c) => ({ ...c, components: c.components.filter((n) => !componentNames.includes(n)) }))
+        .filter((c) => c.components.length >= 2);
+      kept.push({ id: [...componentNames].sort().join('|'), components: [...componentNames] });
+      const clubs = kept.map((c, i) => ({ ...c, label: `Club ${i + 1}` }));
+      return withUpdatedIpcSavedState({ ...stepData, processAssignments: { ...pa, [kind]: { clubs } } }, { cut: false });
+    });
+  };
+  const unclubClub = (kind, clubId) => {
+    setStep1Saved(false);
+    updateSelectedSkuStepData((stepData) => {
+      const pa = stepData.processAssignments || {};
+      const clubs = (pa[kind]?.clubs || [])
+        .filter((c) => c.id !== clubId)
+        .map((c, i) => ({ ...c, label: `Club ${i + 1}` }));
+      return withUpdatedIpcSavedState({ ...stepData, processAssignments: { ...pa, [kind]: { clubs } } }, { cut: false });
+    });
+  };
+  // Carry the grouping forward when moving to the next stage: clubbed components
+  // go together, singles go alone. Copies `fromKind`'s clubs onto `toKind`.
+  const propagateClubs = (fromKind, toKind) => {
+    updateSelectedSkuStepData((stepData) => {
+      const pa = stepData.processAssignments || {};
+      const clubs = (pa[fromKind]?.clubs || []).map((c) => ({ ...c, components: [...c.components] }));
+      return { ...stepData, processAssignments: { ...pa, [toKind]: { clubs } } };
+    });
+  };
+
+  // Sewing → "Save & Move to IPC Assembly": remember that this IPC's stitching
+  // has been sent to the assembly line (a simple flag on stepData; the popup is
+  // handled in the UI). Draft-backed, additive.
+  const markSewMovedToAssembly = () => {
+    updateSelectedSkuStepData((stepData) => ({ ...stepData, sewAssemblyMoved: true }));
+  };
+
+  // ---- Finishing (Cut, Sew & Finishing · part 3) ---------------------------
+  // Finishing is filled per FINISHING work order (like cutting/sewing), via the
+  // shared handleWorkOrderChange (finishingProcess / finishingTypes / remarks).
+  // MANDATORY: every FINISHING work order must have a process + at least one type
+  // (vacuously complete when the IPC has no FINISHING work orders).
+  const isFinishingComplete = (stepData) => {
+    const finWos = (stepData?.rawMaterials || []).flatMap((m) =>
+      (m.workOrders || []).filter((wo) => wo?.workOrder === 'FINISHING'));
+    return finWos.every((wo) => wo.finishingProcess?.toString().trim() && (wo.finishingTypes || []).length > 0);
+  };
+
+  // Save the step then return to the IPC selector (where "Proceed to Packaging" lives).
+  const goToIpcSelector = () => {
+    setFlowPhase('ipcSelector');
+    setTimeout(() => scrollContainerRef.current?.scrollTo({ top: 0, behavior: 'smooth' }), 100);
   };
 
   const handleRawMaterialChange = (materialIndex, field, value) => {
@@ -2257,6 +2429,19 @@ const GenerateFactoryCode = ({
         ...updatedRawMaterials[materialIndex],
         workOrders: [...updatedRawMaterials[materialIndex].workOrders, {
           workOrder: '',
+          receivedUnit: '',
+          processUnit: '',
+          dispatchUnit: '',
+          cutLength: '',
+          cutWidth: '',
+          cutUnit: '',
+          cutWastage: '',
+          sewLength: '',
+          sewWidth: '',
+          sewUnit: '',
+          sewWastage: '',
+          finishingProcess: '',
+          finishingTypes: [],
           isRequired: '',
           wastage: '',
           forField: '',
@@ -2913,6 +3098,13 @@ const GenerateFactoryCode = ({
       });
     }
     saveCurrentFormState();
+    // Mirror the BOM & WO slice into the per-section DB store.
+    const bomSd = getSelectedSkuStepData();
+    persistSection('bomwo', {
+      rawMaterials: bomSd?.rawMaterials || [],
+      consumptionMaterials: bomSd?.consumptionMaterials || [],
+      rawSavedComponents: bomSd?.rawSavedComponents || [],
+    });
   };
 
   const handleSaveStep3 = () => {
@@ -2948,6 +3140,8 @@ const GenerateFactoryCode = ({
     setStep3SaveStatus('success');
     setShowSaveMessage(false);
     saveCurrentFormState();
+    // Mirror the Artwork & Labeling slice into the per-section DB store.
+    persistSection('artwork', { artworkMaterials: getSelectedSkuStepData()?.artworkMaterials || [] });
   };
 
   const handleSaveStep4 = () => {
@@ -2966,6 +3160,8 @@ const GenerateFactoryCode = ({
     setStep4SaveStatus('success');
     setShowSaveMessage(false);
     saveCurrentFormState();
+    // Mirror the Packaging slice into the per-section DB store.
+    persistSection('packaging', { packaging: getSelectedSkuStepData()?.packaging || {} });
   };
 
   // Generate IPC code for SKUs and subproducts
@@ -3032,6 +3228,24 @@ const GenerateFactoryCode = ({
     }
   };
 
+  // Compact Cut/Sew slice for the per-section store (Phase B): process
+  // assignments + the cut/sew spec fields carried on CUTTING/SEWING work orders.
+  const buildCutSewSlice = (stepData) => ({
+    processAssignments: stepData?.processAssignments || { cutting: {}, sewing: {} },
+    workOrderSpecs: (stepData?.rawMaterials || []).flatMap((m) =>
+      (m.workOrders || [])
+        .filter((wo) => wo.workOrder === 'CUTTING' || wo.workOrder === 'SEWING' || wo.workOrder === 'FINISHING')
+        .map((wo) => ({
+          componentName: m.componentName || '',
+          workOrder: wo.workOrder,
+          receivedUnit: wo.receivedUnit || '', processUnit: wo.processUnit || '', dispatchUnit: wo.dispatchUnit || '',
+          cutLength: wo.cutLength || '', cutWidth: wo.cutWidth || '', cutUnit: wo.cutUnit || '', cutWastage: wo.cutWastage || '',
+          sewLength: wo.sewLength || '', sewWidth: wo.sewWidth || '', sewUnit: wo.sewUnit || '', sewWastage: wo.sewWastage || '',
+          finishingProcess: wo.finishingProcess || '', finishingTypes: wo.finishingTypes || [], remarks: wo.remarks || '',
+        }))
+    ),
+  });
+
   const handleSaveStep1 = () => {
     const result = validateStep1();
     if (!result.isValid) {
@@ -3039,9 +3253,13 @@ const GenerateFactoryCode = ({
       return;
     }
     setStep1Saved(true);
-    updateSelectedSkuStepData((stepData) => withUpdatedIpcSavedState(stepData, { cut: true }));
+    // The "cut" completion flag (IPC-selector badge + packaging gate) is true only
+    // when Finishing is also done — Finishing is mandatory for the step.
+    updateSelectedSkuStepData((stepData) => withUpdatedIpcSavedState(stepData, { cut: isFinishingComplete(stepData) }));
     setShowSaveMessage(false);
     saveCurrentFormState();
+    // Mirror the Cut/Sew/Finishing slice into the per-section DB store.
+    persistSection('cutsew', buildCutSewSlice(getSelectedSkuStepData()));
   };
 
   const validateStep3 = () => {
@@ -4347,6 +4565,9 @@ const GenerateFactoryCode = ({
       workOrders.forEach((wo, woIdx) => {
         if (!wo || !wo.workOrder) return;
         const woType = wo.workOrder.toString().trim().toUpperCase();
+        // CUTTING / SEWING are declared in BOM but their detailed spec is filled in
+        // the Cut, Sew & Finishing step — so don't require that spec here.
+        if (woType === 'CUTTING' || woType === 'SEWING') return;
         const woSchema = WORK_ORDER_SCHEMAS[woType];
         if (woSchema) {
           // Use _workOrder_ prefix to match UI error key pattern
@@ -4424,24 +4645,28 @@ const GenerateFactoryCode = ({
   const handleNext = () => {
     console.log('handleNext called - currentStep:', currentStep, 'flowPhase:', flowPhase);
 
-    // IPC-First: handle ipcFlow (Cut/Raw/Artwork) separately
+    // IPC-First: handle ipcFlow separately. Order (Change 3):
+    //   0 = BOM & WO, 1 = Artwork & Labeling, 2 = Cut & Sew Spec.
     if (flowPhase === 'ipcFlow') {
       if (currentStep === 0) {
-        if (!step1Saved) { setShowSaveMessage(true); setSaveMessage('Save first'); return; }
-        const r1 = validateStep1();
-        if (!r1.isValid) { showValidationErrorsPopup(r1.errors); return; }
-        setShowSaveMessage(false);
-      } else if (currentStep === 1) {
+        // BOM & WO — every component that has raw materials must be saved
         const stepData = getSelectedSkuStepData();
         const componentsWithMaterials = new Set();
         (stepData?.rawMaterials || []).forEach(m => { if (m.componentName) componentsWithMaterials.add(m.componentName); });
         const unsaved = Array.from(componentsWithMaterials).filter(c => !step2SavedComponents.has(c));
         if (unsaved.length > 0) { setShowSaveMessage(true); setSaveMessage('Save first'); return; }
         setShowSaveMessage(false);
-      } else if (currentStep === 2) {
+      } else if (currentStep === 1) {
+        // Artwork & Labeling
         if (!step3Saved) { setShowSaveMessage(true); setSaveMessage('Save first'); return; }
         const r3 = validateStep4();
         if (!r3.isValid) { showValidationErrorsPopup(r3.errors); return; }
+        setShowSaveMessage(false);
+      } else if (currentStep === 2) {
+        // Cut & Sew Spec
+        if (!step1Saved) { setShowSaveMessage(true); setSaveMessage('Save first'); return; }
+        const r1 = validateStep1();
+        if (!r1.isValid) { showValidationErrorsPopup(r1.errors); return; }
         setShowSaveMessage(false);
       }
       if (currentStep < ipcFlowTotalSteps) {
@@ -4702,7 +4927,7 @@ const GenerateFactoryCode = ({
     return (
       <div className="w-full max-w-2xl mx-auto" style={{ padding: '24px 0' }}>
         <h2 className="text-2xl font-semibold tracking-tight text-foreground mb-2">Select SKU to proceed</h2>
-        <p className="text-sm text-muted-foreground mb-6">Choose an SKU to fill Cut & Sew, Raw Material, and Artwork</p>
+        <p className="text-sm text-muted-foreground mb-6">Choose an SKU to fill BOM & WO, Artwork, and Cut & Sew</p>
         <div className="flex flex-col gap-4">
           {ipcItems.map((item) => {
             const comp = getIpcCompletion(item.id);
@@ -4743,9 +4968,9 @@ const GenerateFactoryCode = ({
                 </div>
                 <div className="flex items-center gap-4 shrink-0">
                   <div className="flex gap-3 text-xs">
-                    <span className={comp.cut ? 'text-green-600 font-medium' : 'text-muted-foreground'}>Cut & Sew {comp.cut ? '✓' : '○'}</span>
-                    <span className={comp.raw ? 'text-green-600 font-medium' : 'text-muted-foreground'}>BOM & WIP {comp.raw ? '✓' : '○'}</span>
+                    <span className={comp.raw ? 'text-green-600 font-medium' : 'text-muted-foreground'}>BOM & WO {comp.raw ? '✓' : '○'}</span>
                     <span className={comp.artwork ? 'text-green-600 font-medium' : 'text-muted-foreground'}>Artwork {comp.artwork ? '✓' : '○'}</span>
+                    <span className={comp.cut ? 'text-green-600 font-medium' : 'text-muted-foreground'}>Cut & Sew {comp.cut ? '✓' : '○'}</span>
                   </div>
                   {item.type === 'product' && (
                     <>
@@ -4791,7 +5016,7 @@ const GenerateFactoryCode = ({
             const comp = getIpcCompletion(item.id);
             return !comp.cut || !comp.raw || !comp.artwork;
           }) && (
-            <p className="text-sm text-amber-600 font-medium">Fill all IPCs (Cut, Raw, Artwork) to continue for packaging</p>
+            <p className="text-sm text-amber-600 font-medium">Fill all IPCs (BOM & WO, Artwork, Cut & Sew) to continue for packaging</p>
           )}
           <Button
             type="button"
@@ -4856,10 +5081,10 @@ const GenerateFactoryCode = ({
                 {isDone ? '✓' : i + 1}
               </button>
               <div className={cn('text-[10px] mt-2 text-center leading-tight', isDone || isCurrent ? 'text-primary font-medium' : 'text-muted-foreground')} style={{ maxWidth: 44 }}>
-                {label === 'BOM & WIP' ? (
+                {label === 'BOM & WO' ? (
                   <>
                     <div>BOM</div>
-                    <div>& WIP</div>
+                    <div>& WO</div>
                   </>
                 ) : label === 'Cut & Sew Spec' ? (
                   <>
@@ -4906,25 +5131,7 @@ const GenerateFactoryCode = ({
         const mergedFormData = getMergedFormData();
         switch (currentStep) {
           case 0:
-            return (
-              <Step1
-                formData={mergedFormData}
-                errors={errors}
-                addComponent={addComponent}
-                removeComponent={removeComponent}
-                handleComponentChange={handleComponentChange}
-                handleComponentCuttingSizeChange={handleComponentCuttingSizeChange}
-                handleComponentSewSizeChange={handleComponentSewSizeChange}
-                validateStep1={validateStep1}
-                handleSave={handleSaveStep1}
-                handleNext={handleNext}
-                showSaveMessage={showSaveMessage && currentStep === 0}
-                isSaved={step1Saved}
-                onValidationFail={showValidationErrorsPopup}
-                renderHeaderAction={renderStepCloseButton()}
-              />
-            );
-          case 1:
+            // BOM & WO
             return (
               <Step2
                 formData={mergedFormData}
@@ -4944,7 +5151,8 @@ const GenerateFactoryCode = ({
                 onValidationFail={showValidationErrorsPopup}
               />
             );
-          case 2:
+          case 1:
+            // Artwork & Labeling
             return (
               <Step4
                 formData={mergedFormData}
@@ -4954,6 +5162,27 @@ const GenerateFactoryCode = ({
                 addArtworkMaterial={addArtworkMaterial}
                 removeArtworkMaterial={removeArtworkMaterial}
                 step3SelectedComponentRef={step3SelectedComponentRef}
+              />
+            );
+          case 2:
+            // Cut & Sew Spec
+            return (
+              <Step1
+                formData={mergedFormData}
+                errors={errors}
+                handleWorkOrderChange={handleWorkOrderChange}
+                removeWorkOrder={removeWorkOrder}
+                clubComponents={clubComponents}
+                unclubClub={unclubClub}
+                propagateClubs={propagateClubs}
+                markSewMovedToAssembly={markSewMovedToAssembly}
+                onProceedToSelector={goToIpcSelector}
+                validateStep1={validateStep1}
+                handleSave={handleSaveStep1}
+                showSaveMessage={showSaveMessage && currentStep === 2}
+                isSaved={step1Saved}
+                onValidationFail={showValidationErrorsPopup}
+                renderHeaderAction={renderStepCloseButton()}
               />
             );
           default:
@@ -4983,6 +5212,9 @@ const GenerateFactoryCode = ({
           removeSubproduct={removeSubproduct}
           handleSubproductChange={handleSubproductChange}
           handleSubproductImageChange={handleSubproductImageChange}
+          handleStep0ComponentChange={handleStep0ComponentChange}
+          addStep0Component={addStep0Component}
+          removeStep0Component={removeStep0Component}
           validateStep0={validateStep0}
           handleSave={handleSaveStep0}
           handleNext={handleNext}
@@ -5047,7 +5279,7 @@ const GenerateFactoryCode = ({
           type="button"
           className="mb-6 bg-background transition-transform hover:-translate-x-0.5"
         >
-          ← Back to Code Creation
+          ← Back to IPO Management
         </Button>
         
         {/* Breadcrumb Navigation */}
@@ -5055,31 +5287,37 @@ const GenerateFactoryCode = ({
           className="w-full flex flex-wrap items-center gap-2 rounded-2xl border border-border bg-muted/60 text-sm text-muted-foreground"
           style={{ padding: '12px 18px', marginTop: '4px', marginBottom: '24px' }}
         >
-          <button
-            type="button"
-            onClick={() => handleBreadcrumbClick(-1)}
-            className="rounded-lg font-medium text-primary transition-colors hover:bg-accent hover:text-accent-foreground"
-            style={{ padding: '8px 14px' }}
-          >
-            Code Creation
-          </button>
-          <span className="px-1 text-foreground/60 text-xs sm:text-sm">›</span>
+          {/* Path: IPO Management › [IPO Type] › IPC Spec › <phase>. This wizard is
+              opened from IPO Management → (type) → IPO → IPC Spec. */}
           <button
             type="button"
             onClick={() => handleBreadcrumbClick(-3)}
             className="rounded-lg font-medium text-primary transition-colors hover:bg-accent hover:text-accent-foreground"
             style={{ padding: '8px 14px' }}
           >
-            IPO
+            IPO Management
           </button>
+          {formData.orderType && (
+            <>
+              <span className="px-1 text-foreground/60 text-xs sm:text-sm">›</span>
+              <button
+                type="button"
+                onClick={() => handleBreadcrumbClick(-3)}
+                className="rounded-lg font-medium text-primary transition-colors hover:bg-accent hover:text-accent-foreground"
+                style={{ padding: '8px 14px' }}
+              >
+                {formData.orderType}
+              </button>
+            </>
+          )}
 
-          {/* IPC Creation - always shown after IPO, clickable (goes to step0 when not there) */}
+          {/* IPC Spec — the wizard root (active on the Product Spec / step0 phase). */}
           <span className="px-1 text-foreground/60 text-xs sm:text-sm">›</span>
           {flowPhase === 'step0' ? (
-            <span className="rounded-lg bg-accent font-semibold text-foreground" style={{ padding: '8px 14px' }}>IPC Creation</span>
+            <span className="rounded-lg bg-accent font-semibold text-foreground" style={{ padding: '8px 14px' }}>IPC Spec</span>
           ) : (
             <button type="button" onClick={() => handleBreadcrumbClick(-5)} className="rounded-lg font-medium text-primary transition-colors hover:bg-accent hover:text-accent-foreground" style={{ padding: '8px 14px' }}>
-              IPC Creation
+              IPC Spec
             </button>
           )}
 
@@ -5120,8 +5358,25 @@ const GenerateFactoryCode = ({
               <span className="rounded-lg bg-accent font-semibold text-foreground" style={{ padding: '8px 14px' }}>Packaging</span>
             </>
           )}
+
+          {/* Server (DB) save status. The IPC Spec runs for weeks, so a Save must
+              visibly confirm it reached the DB — a failed server save never gets to
+              masquerade as "Saved". */}
+          {serverSaveState !== 'idle' && (
+            <span className="ml-auto flex items-center gap-2 text-xs font-medium">
+              {serverSaveState === 'saving' && <span className="text-muted-foreground">Saving…</span>}
+              {serverSaveState === 'saved' && <span className="text-green-600">✓ Saved</span>}
+              {serverSaveState === 'local' && <span className="text-amber-600">On this device only — create the IPO to sync</span>}
+              {serverSaveState === 'error' && (
+                <>
+                  <span className="text-red-600">⚠ Not saved to server</span>
+                  <button type="button" onClick={() => saveCurrentFormState()} className="rounded-md border border-red-400 px-2 py-0.5 text-red-600 hover:bg-red-50">Retry</button>
+                </>
+              )}
+            </span>
+          )}
         </div>
-        
+
         <div className="mt-6">
           {/* <h1 className="text-3xl font-semibold tracking-tight text-foreground mb-1">
             Generate Factory Code
@@ -5650,8 +5905,8 @@ const GenerateFactoryCode = ({
                   </Button>
                 </div>
               </div>
-            ) : flowPhase === 'ipcFlow' && currentStep === 2 ? (
-              // Artwork (ipcFlow step 2): Save + Prev + Next
+            ) : flowPhase === 'ipcFlow' && currentStep === 1 ? (
+              // Artwork & Labeling (ipcFlow step 1): Save + Prev + Next
               <div className="flex justify-between items-center" style={{ marginTop: '32px' }}>
                 <div className="flex gap-3">
                   <Button type="button" variant="outline" onClick={handleSaveStep3} className={`min-w-[90px] ${step3SaveStatus === 'error' ? 'text-red-600 border-red-500 hover:text-red-700' : step3Saved || step3SaveStatus === 'success' ? 'text-green-600 hover:text-green-700' : ''}`}>
@@ -5664,15 +5919,15 @@ const GenerateFactoryCode = ({
                   <Button type="button" onClick={handleNext}>Next →</Button>
                 </div>
               </div>
-            ) : flowPhase === 'ipcFlow' && currentStep === 1 ? (
-              // Raw Material (ipcFlow step 1): Prev + Next
+            ) : flowPhase === 'ipcFlow' && currentStep === 0 ? (
+              // BOM & WO (ipcFlow step 0): Step2 has per-component Save; nav only Prev + Next
               <div className="flex justify-end items-center gap-3" style={{ marginTop: '32px' }}>
                 {showSaveMessage && <span className="text-red-600 text-sm font-medium">Save first</span>}
                 <Button type="button" variant="outline" onClick={handlePrevious}>← Previous</Button>
                 <Button type="button" onClick={handleNext}>Next →</Button>
               </div>
-            ) : flowPhase === 'ipcFlow' && currentStep === 0 ? (
-              // Cut (ipcFlow step 0): Step1 has Save + Add Component; nav only Prev + Next
+            ) : flowPhase === 'ipcFlow' && currentStep === 2 ? (
+              // Cut & Sew Spec (ipcFlow step 2): Step1 has Save + Add Component; nav only Prev + Next
               <div className="flex justify-end items-center gap-3" style={{ marginTop: '32px' }}>
                 {showSaveMessage && <span className="text-red-600 text-sm font-medium">Save first</span>}
                 <Button type="button" variant="outline" onClick={handlePrevious}>← Previous</Button>

@@ -18,17 +18,20 @@ The orchestrator drives a `flowPhase` state. `currentStep` indexes the IPC sub-f
 |--------------------|--------------------------------------|------------------------------|--------------------------------------|
 | `step0`            | Product / SKU spec                   | `components/steps/Step0.jsx` | PRODUCT SPEC                         |
 | `ipcSelector`      | IPC picker (inline in orchestrator)  | —                            | —                                   |
-| `ipcFlow` step 0   | Cut & Sew spec                       | `components/steps/Step1.jsx` | PART-1 CUT & SEW SPEC               |
-| `ipcFlow` step 1   | Bill of Material & WIP               | `components/steps/Step2.jsx` | PART-2 BILL OF MATERIAL & WIP       |
-| `ipcFlow` step 2   | Artwork & Labeling                   | `components/steps/Step4.jsx` | PART-3 ARTWORK & LABELING           |
+| `ipcFlow` step 0   | BOM & WO (Bill of Material & WO)      | `components/steps/Step2.jsx` | PART-1 BOM & WO                     |
+| `ipcFlow` step 1   | Artwork & Labeling                   | `components/steps/Step4.jsx` | PART-2 ARTWORK & LABELING          |
+| `ipcFlow` step 2   | Cut & Sew spec                       | `components/steps/Step1.jsx` | PART-3 CUT & SEW SPEC              |
 | `packaging`        | Packaging                            | `components/steps/Step5.jsx` | PACKAGING                           |
 
 `ConsumptionSheet.jsx` is rendered as an **overlay** (read-only summary), not as a step.
 
-> ⚠️ Naming note: the live file `Step4.jsx` renders as **PART-3** (artwork). The
-> file numbering does not match the UI step numbering. There is no `Step3.jsx`
-> (removed — see §5). Likewise the orchestrator's `step3Saved`/`handleSaveStep3`
-> state actually tracks the **artwork** step's save status.
+> ⚠️ Naming note (reordered in "Change 3"): the ipcFlow order is now
+> **BOM & WO → Artwork → Cut & Sew**, but the file names still read Step1/2/4.
+> So **file number ≠ UI order**: `Step2`=step 0, `Step4`=step 1, `Step1`=step 2.
+> There is no `Step3.jsx` (removed — see §5). The orchestrator's
+> `step3Saved`/`handleSaveStep3` track the **artwork** step; `handleSaveStep1`/
+> `step1Saved` track **Cut & Sew**; `handleSaveStep2`/`step2SavedComponents` track
+> **BOM & WO**. See `Brain Flow ChangeIPC.md` §4 for the full mapping.
 
 ---
 

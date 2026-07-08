@@ -18,11 +18,16 @@ import { PRINTING_APPROVAL_OPTIONS, getPrintingVariants, getPrintingDesigns, get
 import { PercentInput } from '@/components/ui/percent-input';
 import { QUILTING_APPROVAL_OPTIONS, getQuiltingVariants, getQuiltingDesigns, getQuiltingStitchLength, getQuiltingPatternRepeat, getQuiltingNeedleSpacing, getAllQuiltingTypes } from '../../data/quiltingData';
 import { RAW_MATERIAL_WORK_ORDER_OPTIONS } from '@/utils/workOrderOptions';
+import { WORK_ORDER_UNIT_OPTIONS } from '../../constants/unitOptions';
 import { SEWING_THREAD_TYPE_OPTIONS, SEWING_APPROVAL_OPTIONS, getSewingStitchType, getSewingVariants, getSewingThreadType, getAllSewingMachineTypes } from '../../data/sewingData';
 import { TUFTING_APPROVAL_OPTIONS, getTuftingDesigns, getTuftingVariants, getTuftingMachineGauge, getTuftingStitchRate, getAllTuftingMachineTypes } from '../../data/tuftingData';
 import { TestingRequirementsInput } from '@/components/ui/testing-requirements-input';
 import { WEAVING_APPROVAL_OPTIONS, getWeavingVariants, getWeavingDesigns, getWeavingReedRange, getWeavingPickRange, getAllWeavingMachineTypes } from '../../data/weavingData';
 import { isSimpleRequirementWorkOrder } from './workOrderHelpers';
+
+// Some rows carry the literal strings "null"/"undefined" (from earlier data
+// round-trips); never render those as a field value.
+const noNull = (v) => (v == null || v === 'null' || v === 'undefined' ? '' : v);
 
 const WorkOrdersSection = ({
   material,
@@ -32,6 +37,17 @@ const WorkOrdersSection = ({
   handleWorkOrderChange,
   addWorkOrder,
   removeWorkOrder,
+  // Cut/Sew reuse: when `restrictType` is set (CUTTING|SEWING) the caller passes a
+  // material pre-filtered to that type, so here we (a) show the full spec instead
+  // of the BOM "fill in Cut & Sew" note, (b) render read-only fetched units +
+  // editable CUT/SEW size, and (c) lock the type + hide Add. In BOM these default
+  // off, so behaviour is unchanged there.
+  restrictType = null,
+  showSizeFields = false,
+  sizePrefix = 'cut',
+  sizeLabel = 'CUT SIZE',
+  unitsReadOnly = false,
+  hideAdd = false,
 }) => (
   <>
             <div style={{ marginTop: '20px' }}>
@@ -90,22 +106,26 @@ const WorkOrdersSection = ({
                       error={errors[`rawMaterial_${actualIndex}_workOrder_${woIndex}_workOrder`]}
                       style={{ width: '160px' }}
                     >
-                      <SearchableDropdown
-                        value={workOrder.workOrder || ''}
-                        onChange={(selectedValue) => {
-                          handleWorkOrderChange(actualIndex, woIndex, 'workOrder', selectedValue);
-                        }}
-                        options={RAW_MATERIAL_WORK_ORDER_OPTIONS}
-                        placeholder="Select Work Order"
-                        strictMode={true}
-                        className={
-                          errors[`rawMaterial_${actualIndex}_workOrder_${woIndex}_workOrder`] ? 'border-destructive' : ''
-                        }
-                      />
+                      {restrictType ? (
+                        <div className="h-11 w-full rounded-md border border-input bg-muted/50 px-3 text-sm flex items-center font-medium text-foreground/80">{workOrder.workOrder}</div>
+                      ) : (
+                        <SearchableDropdown
+                          value={workOrder.workOrder || ''}
+                          onChange={(selectedValue) => {
+                            handleWorkOrderChange(actualIndex, woIndex, 'workOrder', selectedValue);
+                          }}
+                          options={RAW_MATERIAL_WORK_ORDER_OPTIONS}
+                          placeholder="Select Work Order"
+                          strictMode={true}
+                          className={
+                            errors[`rawMaterial_${actualIndex}_workOrder_${woIndex}_workOrder`] ? 'border-destructive' : ''
+                          }
+                        />
+                      )}
                     </Field>
                     
                     {/* WASTAGE field - Hidden for KNITTING, PRINTING, QUILTING, SEWING, TUFTING, WEAVING, and FRINGE/TASSELS as they have their own sections */}
-                    {workOrder.workOrder && workOrder.workOrder !== 'KNITTING' && workOrder.workOrder !== 'PRINTING' && workOrder.workOrder !== 'QUILTING' && workOrder.workOrder !== 'SEWING' && workOrder.workOrder !== 'TUFTING' && workOrder.workOrder !== 'WEAVING' && workOrder.workOrder !== 'FRINGE/TASSELS' && !isSimpleRequirementWorkOrder(workOrder.workOrder) && (
+                    {workOrder.workOrder && workOrder.workOrder !== 'KNITTING' && workOrder.workOrder !== 'PRINTING' && workOrder.workOrder !== 'QUILTING' && (restrictType || (workOrder.workOrder !== 'SEWING' && workOrder.workOrder !== 'CUTTING')) && workOrder.workOrder !== 'TUFTING' && workOrder.workOrder !== 'WEAVING' && workOrder.workOrder !== 'FRINGE/TASSELS' && !isSimpleRequirementWorkOrder(workOrder.workOrder) && (
                       <>
                         <Field
                           label={
@@ -129,9 +149,68 @@ const WorkOrdersSection = ({
                       </>
                     )}
                   </div>
-                  
-                  {/* Conditional Fields based on Work Order Type */}
-                  {workOrder.workOrder && (
+
+                  {/* RECEIVED / PROCESS / DISPATCH units. Editable in BOM; read-only
+                      (fetched) in the Cut/Sew reuse (unitsReadOnly). */}
+                  <div className="flex flex-wrap items-start gap-6" style={{ marginTop: '12px' }}>
+                    {[['receivedUnit', 'RECEIVED UNIT'], ['processUnit', 'PROCESS UNIT'], ['dispatchUnit', 'DISPATCH UNIT']].map(([fld, lbl]) => (
+                      <Field key={fld} label={unitsReadOnly ? `${lbl} (FETCHED)` : lbl} width="sm" error={errors[`rawMaterial_${actualIndex}_workOrder_${woIndex}_${fld}`]}>
+                        {unitsReadOnly ? (
+                          <div className="h-11 w-full rounded-md border border-input bg-muted/50 px-3 text-sm flex items-center text-muted-foreground">{workOrder[fld] || 'Fetched'}</div>
+                        ) : (
+                          <SearchableDropdown
+                            value={workOrder[fld] || ''}
+                            onChange={(v) => handleWorkOrderChange(actualIndex, woIndex, fld, v)}
+                            options={WORK_ORDER_UNIT_OPTIONS}
+                            placeholder="Select unit"
+                            strictMode={true}
+                            className={errors[`rawMaterial_${actualIndex}_workOrder_${woIndex}_${fld}`] ? 'border-destructive' : ''}
+                          />
+                        )}
+                      </Field>
+                    ))}
+                  </div>
+
+                  {/* CUT / SEW SIZE — captured per work order in the Cut/Sew reuse. */}
+                  {showSizeFields && (
+                    <div className="flex flex-wrap items-end gap-6" style={{ marginTop: '12px' }}>
+                      <Field label={`${sizeLabel} — L`} width="sm">
+                        <Input type="number" value={workOrder[`${sizePrefix}Length`] || ''} onChange={(e) => handleWorkOrderChange(actualIndex, woIndex, `${sizePrefix}Length`, e.target.value)} placeholder="L" />
+                      </Field>
+                      <Field label="W" width="sm">
+                        <Input type="number" value={workOrder[`${sizePrefix}Width`] || ''} onChange={(e) => handleWorkOrderChange(actualIndex, woIndex, `${sizePrefix}Width`, e.target.value)} placeholder="W" />
+                      </Field>
+                      <Field label="UNIT" width="sm">
+                        <SearchableDropdown value={workOrder[`${sizePrefix}Unit`] || ''} onChange={(v) => handleWorkOrderChange(actualIndex, woIndex, `${sizePrefix}Unit`, v)} options={WORK_ORDER_UNIT_OPTIONS} placeholder="Select unit" strictMode={true} />
+                      </Field>
+                      <Field label="WASTAGE %" width="sm">
+                        <Input type="number" value={workOrder[`${sizePrefix}Wastage`] || ''} onChange={(e) => handleWorkOrderChange(actualIndex, woIndex, `${sizePrefix}Wastage`, e.target.value)} placeholder="%" />
+                      </Field>
+                    </div>
+                  )}
+
+                  {/* CUTTING / SEWING in BOM: show only a pointer note + REMARKS (the
+                      full spec is filled in Cut/Sew). Hidden in the Cut/Sew reuse. */}
+                  {!restrictType && (workOrder.workOrder === 'CUTTING' || workOrder.workOrder === 'SEWING') && (
+                    <div className="w-full mt-4 pt-4 border-t border-gray-100" style={{ marginTop: '16px' }}>
+                      <p className="text-sm italic text-muted-foreground" style={{ marginBottom: '12px' }}>
+                        Please fill the {workOrder.workOrder === 'CUTTING' ? 'Cutting' : 'Sewing'} Spec details in the CUT &amp; SEW Section. With Remarks option/Tab.
+                      </p>
+                      <Field label="REMARKS" required width="lg" error={errors[`rawMaterial_${actualIndex}_workOrder_${woIndex}_remarks`]}>
+                        <Input
+                          type="text"
+                          value={noNull(workOrder.remarks)}
+                          onChange={(e) => handleWorkOrderChange(actualIndex, woIndex, 'remarks', e.target.value)}
+                          placeholder="Enter remarks"
+                          aria-invalid={Boolean(errors[`rawMaterial_${actualIndex}_workOrder_${woIndex}_remarks`])}
+                        />
+                      </Field>
+                    </div>
+                  )}
+
+                  {/* Conditional Fields based on Work Order Type. In BOM the full spec
+                      is hidden for CUTTING/SEWING; in the Cut/Sew reuse it is shown. */}
+                  {workOrder.workOrder && (restrictType || (workOrder.workOrder !== 'CUTTING' && workOrder.workOrder !== 'SEWING')) && (
                     <div className="w-full flex flex-wrap items-start mt-14 pt-6 border-t border-gray-50" style={{ gap: '24px 32px', marginTop: '20px' }}>
                       {isSimpleRequirementWorkOrder(workOrder.workOrder) && (
                         <QualityVerificationToggle
@@ -256,7 +335,7 @@ const WorkOrdersSection = ({
                           <Field label="REMARKS" required width="lg" error={errors[`rawMaterial_${actualIndex}_workOrder_${woIndex}_remarks`]}>
                             <Input
                               type="text"
-                              value={workOrder.remarks || ''}
+                              value={noNull(workOrder.remarks)}
                               onChange={(e) => handleWorkOrderChange(actualIndex, woIndex, 'remarks', e.target.value)}
                               placeholder="Enter remarks"
                               aria-invalid={Boolean(errors[`rawMaterial_${actualIndex}_workOrder_${woIndex}_remarks`])}
@@ -412,7 +491,7 @@ const WorkOrdersSection = ({
                           <Field label="REMARKS" required width="lg" error={errors[`rawMaterial_${actualIndex}_workOrder_${woIndex}_remarks`]}>
                             <Input
                               type="text"
-                              value={workOrder.remarks || ''}
+                              value={noNull(workOrder.remarks)}
                               onChange={(e) => handleWorkOrderChange(actualIndex, woIndex, 'remarks', e.target.value)}
                               placeholder="Text"
                               aria-invalid={Boolean(errors[`rawMaterial_${actualIndex}_workOrder_${woIndex}_remarks`])}
@@ -690,7 +769,7 @@ const WorkOrdersSection = ({
                           <Field label="REMARKS" required width="lg" error={errors[`rawMaterial_${actualIndex}_workOrder_${woIndex}_remarks`]}>
                             <Input
                               type="text"
-                              value={workOrder.remarks || ''}
+                              value={noNull(workOrder.remarks)}
                               onChange={(e) => handleWorkOrderChange(actualIndex, woIndex, 'remarks', e.target.value)}
                               placeholder="Text"
                               aria-invalid={Boolean(errors[`rawMaterial_${actualIndex}_workOrder_${woIndex}_remarks`])}
@@ -783,7 +862,7 @@ const WorkOrdersSection = ({
                           <Field label="REMARKS" required width="lg" error={errors[`rawMaterial_${actualIndex}_workOrder_${woIndex}_remarks`]}>
                             <Input
                               type="text"
-                              value={workOrder.remarks || ''}
+                              value={noNull(workOrder.remarks)}
                               onChange={(e) => handleWorkOrderChange(actualIndex, woIndex, 'remarks', e.target.value)}
                               placeholder="Text"
                               aria-invalid={Boolean(errors[`rawMaterial_${actualIndex}_workOrder_${woIndex}_remarks`])}
@@ -855,7 +934,7 @@ const WorkOrdersSection = ({
                           <Field label="REMARKS" required width="lg" error={errors[`rawMaterial_${actualIndex}_workOrder_${woIndex}_remarks`]}>
                             <Input
                               type="text"
-                              value={workOrder.remarks || ''}
+                              value={noNull(workOrder.remarks)}
                               onChange={(e) => handleWorkOrderChange(actualIndex, woIndex, 'remarks', e.target.value)}
                               placeholder="Text"
                               aria-invalid={Boolean(errors[`rawMaterial_${actualIndex}_workOrder_${woIndex}_remarks`])}
@@ -1307,7 +1386,7 @@ const WorkOrdersSection = ({
                           <Field label="REMARKS" required width="lg" error={errors[`rawMaterial_${actualIndex}_workOrder_${woIndex}_remarks`]}>
                             <Input
                               type="text"
-                              value={workOrder.remarks || ''}
+                              value={noNull(workOrder.remarks)}
                               onChange={(e) => handleWorkOrderChange(actualIndex, woIndex, 'remarks', e.target.value)}
                               placeholder="Enter remarks"
                               aria-invalid={Boolean(errors[`rawMaterial_${actualIndex}_workOrder_${woIndex}_remarks`])}
@@ -1450,7 +1529,7 @@ const WorkOrdersSection = ({
                           <Field label="REMARKS" required width="lg" error={errors[`rawMaterial_${actualIndex}_workOrder_${woIndex}_remarks`]}>
                             <Input
                               type="text"
-                              value={workOrder.remarks || ''}
+                              value={noNull(workOrder.remarks)}
                               onChange={(e) => handleWorkOrderChange(actualIndex, woIndex, 'remarks', e.target.value)}
                               placeholder="Text"
                               aria-invalid={Boolean(errors[`rawMaterial_${actualIndex}_workOrder_${woIndex}_remarks`])}
@@ -1542,7 +1621,7 @@ const WorkOrdersSection = ({
                           <Field label="REMARKS" required width="lg" error={errors[`rawMaterial_${actualIndex}_workOrder_${woIndex}_remarks`]}>
                             <Input
                               type="text"
-                              value={workOrder.remarks || ''}
+                              value={noNull(workOrder.remarks)}
                               onChange={(e) => handleWorkOrderChange(actualIndex, woIndex, 'remarks', e.target.value)}
                               placeholder="Text"
                               aria-invalid={Boolean(errors[`rawMaterial_${actualIndex}_workOrder_${woIndex}_remarks`])}
@@ -1645,7 +1724,7 @@ const WorkOrdersSection = ({
                           <Field label="REMARKS" required width="lg" error={errors[`rawMaterial_${actualIndex}_workOrder_${woIndex}_remarks`]}>
                             <Input
                               type="text"
-                              value={workOrder.remarks || ''}
+                              value={noNull(workOrder.remarks)}
                               onChange={(e) => handleWorkOrderChange(actualIndex, woIndex, 'remarks', e.target.value)}
                               placeholder="Enter remarks"
                               aria-invalid={Boolean(errors[`rawMaterial_${actualIndex}_workOrder_${woIndex}_remarks`])}
@@ -1749,7 +1828,7 @@ const WorkOrdersSection = ({
                           <Field label="REMARKS" required width="lg" error={errors[`rawMaterial_${actualIndex}_workOrder_${woIndex}_remarks`]}>
                             <Input
                               type="text"
-                              value={workOrder.remarks || ''}
+                              value={noNull(workOrder.remarks)}
                               onChange={(e) => handleWorkOrderChange(actualIndex, woIndex, 'remarks', e.target.value)}
                               placeholder="Enter remarks"
                               aria-invalid={Boolean(errors[`rawMaterial_${actualIndex}_workOrder_${woIndex}_remarks`])}
@@ -1870,7 +1949,7 @@ const WorkOrdersSection = ({
                           <Field label="REMARKS" required width="lg" error={errors[`rawMaterial_${actualIndex}_workOrder_${woIndex}_remarks`]}>
                             <Input
                               type="text"
-                              value={workOrder.remarks || ''}
+                              value={noNull(workOrder.remarks)}
                               onChange={(e) => handleWorkOrderChange(actualIndex, woIndex, 'remarks', e.target.value)}
                               placeholder="Enter remarks"
                               aria-invalid={Boolean(errors[`rawMaterial_${actualIndex}_workOrder_${woIndex}_remarks`])}
@@ -2561,8 +2640,9 @@ const WorkOrdersSection = ({
                 </div>
               ))}
               
-              {/* Add Work Order Button at Bottom - Only show if at least one work order exists */}
-              {material.workOrders && material.workOrders.length > 0 && (
+              {/* Add Work Order Button at Bottom - Only show if at least one work order
+                  exists. Hidden in the Cut/Sew reuse (WOs are declared in BOM). */}
+              {!hideAdd && material.workOrders && material.workOrders.length > 0 && (
               <div className="mt-6 pt-6" style={{ marginTop: '24px', paddingTop: '24px', borderTop: '1px solid var(--border)' }}>
                 <Button
                   type="button"
