@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { getVpoHistory, getVpoDetail } from '../../services/integration';
+import { getVpoHistory, getVpoDetail } from '../../../services/integration';
+import { printVpo } from './vpoPrint';
 
 const VpoHistory = ({ ipoId, ipoCode, onBack }) => {
   const [vpos, setVpos] = useState([]);
@@ -140,10 +141,21 @@ const VpoHistory = ({ ipoId, ipoCode, onBack }) => {
                 Issued {selectedVpo.issued_at}
               </div>
             </div>
-            <Button type="button" variant="outline" size="sm" onClick={() => setSelectedVpo(null)}>
-              Close
-            </Button>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <Button type="button" variant="default" size="sm" onClick={() => printVpo(selectedVpo)}>
+                Print
+              </Button>
+              <Button type="button" variant="outline" size="sm" onClick={() => setSelectedVpo(null)}>
+                Close
+              </Button>
+            </div>
           </div>
+          {(selectedVpo.vendor_name || selectedVpo.total_amount) && (
+            <div style={{ fontSize: 12, color: '#374151', marginBottom: 12 }}>
+              {selectedVpo.vendor_name ? <span><strong>Vendor:</strong> {selectedVpo.vendor_name} · </span> : null}
+              {selectedVpo.total_amount ? <span><strong>Total:</strong> ₹{selectedVpo.total_amount}</span> : null}
+            </div>
+          )}
           {detailLoading ? (
             <div style={{ color: '#6b7280' }}>Loading…</div>
           ) : (

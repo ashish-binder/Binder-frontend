@@ -487,33 +487,10 @@ const GenerateVendorCode = ({ onBack, initialData = null, onSaved }) => {
           createdAt: item.created_at || item.createdAt || '',
         })) : [];
 
-        // Merge with existing localStorage to preserve fields the API doesn't return
-        const existing = JSON.parse(localStorage.getItem('vendorCodes') || '[]');
-        const existingMap = {};
-        existing.forEach(e => { if (e.code) existingMap[e.code.toString()] = e; });
-
-        const merged = mapped.map(item => {
-          const prev = existingMap[item.code?.toString()];
-          if (prev) {
-            // Keep previous values for any field the API returned empty
-            const filled = { ...prev };
-            Object.entries(item).forEach(([k, v]) => {
-              if (v !== '' && v !== null && v !== undefined) filled[k] = v;
-            });
-            delete existingMap[item.code.toString()];
-            return filled;
-          }
-          return item;
-        });
-        // Keep any localStorage-only entries
-        Object.values(existingMap).forEach(e => merged.push(e));
-
-        setExistingVendorCodes(merged);
-        localStorage.setItem('vendorCodes', JSON.stringify(merged));
+        setExistingVendorCodes(mapped);
       } catch (error) {
-        console.warn('Failed to load vendor codes from API, using localStorage:', error);
-        const stored = JSON.parse(localStorage.getItem('vendorCodes') || '[]');
-        setExistingVendorCodes(stored);
+        console.warn('Failed to load vendor codes from API:', error);
+        setExistingVendorCodes([]);
       }
     };
     loadVendorCodes();
@@ -640,8 +617,8 @@ const GenerateVendorCode = ({ onBack, initialData = null, onSaved }) => {
   };
 
   const generateVendorCode = () => {
-    // Get existing codes from localStorage or start from 101
-    const existingCodes = JSON.parse(localStorage.getItem('vendorCodes') || '[]');
+    // Use codes already loaded from the API, or start from 101
+    const existingCodes = existingVendorCodes;
     let nextNumber = 101;
     
     if (existingCodes.length > 0) {
@@ -709,15 +686,11 @@ const GenerateVendorCode = ({ onBack, initialData = null, onSaved }) => {
           createdAt: responseData?.created_at || responseData?.createdAt || initialData?.createdAt || new Date().toISOString()
         };
 
-        const existingCodes = JSON.parse(localStorage.getItem('vendorCodes') || '[]');
         const currentCode = (initialData?.code || initialData?.id || '').toString();
-        const updatedCodes = existingCodes.map((item) => {
+        setExistingVendorCodes((prev) => prev.map((item) => {
           const itemCode = (item.code || item.id || '').toString();
           return itemCode === currentCode ? { ...item, ...updatedVendorData } : item;
-        });
-
-        localStorage.setItem('vendorCodes', JSON.stringify(updatedCodes));
-        setExistingVendorCodes(updatedCodes);
+        }));
 
         if (typeof onSaved === 'function') {
           onSaved(updatedVendorData);
@@ -732,18 +705,14 @@ const GenerateVendorCode = ({ onBack, initialData = null, onSaved }) => {
 
       if (response.status === 'success' && response.data) {
         const newCode = response.data.code;
-        
-        // Update localStorage cache
-        const existingCodes = JSON.parse(localStorage.getItem('vendorCodes') || '[]');
+
         const newVendorData = {
           id: response.data.id || newCode || '',
           code: newCode,
           ...formData,
           createdAt: new Date().toISOString()
         };
-        existingCodes.push(newVendorData);
-        localStorage.setItem('vendorCodes', JSON.stringify(existingCodes));
-        setExistingVendorCodes(existingCodes);
+        setExistingVendorCodes((prev) => [...prev, newVendorData]);
 
         setGeneratedCode(newCode);
       } else {

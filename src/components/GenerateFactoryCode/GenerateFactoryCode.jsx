@@ -608,9 +608,6 @@ const GenerateFactoryCode = ({
   const latestFormDataRef = useRef(formData);
   latestFormDataRef.current = formData;
 
-  const STORAGE_KEY = 'factoryCodeFormData';
-  const getStorageKey = (ipoCode) =>
-    ipoCode ? `${STORAGE_KEY}:${ipoCode}` : STORAGE_KEY;
 
   const fileToBase64 = (file) => {
     return new Promise((resolve) => {
@@ -705,22 +702,8 @@ const GenerateFactoryCode = ({
 
       normalizedPayload = normalizeFactoryCodePayloadStiffenerPlys(cloned);
 
-      // localStorage is best-effort cache. A quota error here must not block the backend save.
-      // Strip base64-stashed file blobs (image/artwork/packaging uploads) before writing —
-      // they push a multi-SKU draft past the ~5 MB localStorage cap. The backend draft keeps
-      // them; the local cache only needs text/structure to act as an offline safety net.
-      try {
-        const lightPayload = JSON.stringify(normalizedPayload, (key, value) =>
-          typeof key === 'string' && key.endsWith('Base64') ? undefined : value
-        );
-        localStorage.setItem(STORAGE_KEY, lightPayload);
-        if (data?.ipoCode) {
-          localStorage.setItem(getStorageKey(data.ipoCode), lightPayload);
-        }
-      } catch (lsErr) {
-        console.warn('Failed to save to localStorage:', lsErr);
-      }
-
+      // Database is the only store — the draft is persisted server-side below
+      // (per-IPO, keyed by ipo_id). No browser localStorage copy is kept.
       window.dispatchEvent(new Event('factoryCodeFormDataUpdated'));
     } catch (e) {
       console.warn('Failed to prepare draft payload:', e);
@@ -761,36 +744,6 @@ const GenerateFactoryCode = ({
     saveFactoryCodeSection(formData.ipoId, skuKey, section, slice)
       .catch((e) => console.warn(`Section '${section}' save failed`, e));
   };
-
-  const loadFromLocalStorage = (ipoCode) => {
-    try {
-      const saved = ipoCode
-        ? localStorage.getItem(getStorageKey(ipoCode))
-        : localStorage.getItem(STORAGE_KEY);
-      if (!saved) return null;
-
-      const data = normalizeFactoryCodePayloadStiffenerPlys(JSON.parse(saved));
-
-      (data.skus || []).forEach((sku) => {
-        if (sku.imageBase64) {
-          sku.image = base64ToFile(sku.imageBase64);
-          sku.imagePreview = sku.imageBase64.data;
-        }
-        (sku.subproducts || []).forEach((sub) => {
-          if (sub.imageBase64) {
-            sub.image = base64ToFile(sub.imageBase64);
-            sub.imagePreview = sub.imageBase64.data;
-          }
-        });
-      });
-
-      return data;
-    } catch (e) {
-      console.warn('Failed to load from localStorage:', e);
-      return null;
-    }
-  };
-
 
   useEffect(() => {
     let cancelled = false;
@@ -935,26 +888,8 @@ const GenerateFactoryCode = ({
         return;
       }
 
-      // Final fallback: localStorage cache (legacy / offline).
-      // When an IPO is in context, load ONLY the IPO-specific key. We never
-      // fall back to the generic `factoryCodeFormData` key because it holds
-      // the last-saved draft from any IPO and would leak SKUs/subproducts
-      // from a previously-edited IPO into a newly-opened one.
-      const savedData = loadFromLocalStorage(initialFormData?.ipoCode);
-      if (!savedData) return;
-
-      if (!hasInitialFromIPO) {
-        setFormData((prev) => ({ ...prev, ...savedData }));
-        return;
-      }
-
-      // The IPO-specific key already scopes the cache to this IPO; the
-      // equality check is a safety net against caches written by older
-      // versions of the app.
-      const ipoMatch = !initialFormData?.ipoCode || (savedData.ipoCode && norm(savedData.ipoCode) === norm(initialFormData.ipoCode));
-      if (ipoMatch) {
-        setFormData((prev) => ({ ...prev, ...savedData }));
-      }
+      // Database-only: no localStorage fallback. If neither the server draft
+      // nor committed rows exist, start from the default empty form.
     })().finally(() => {
       hideLoading();
     });
@@ -3162,6 +3097,191 @@ const GenerateFactoryCode = ({
     saveCurrentFormState();
     // Mirror the Packaging slice into the per-section DB store.
     persistSection('packaging', { packaging: getSelectedSkuStepData()?.packaging || {} });
+  };
+
+  // Combined "Save" for the final (packaging) step. Validates + saves the
+  // packaging slice, then runs the full Generate-Factory-Code pass so a single
+  // click both persists the section and writes every IPC (all SKUs +
+  // subproducts) to the database. Replaces the old separate
+  // "Save" + "Generate Factory Code" buttons.
+  const handleSaveAndGenerate = async () => {
+    const validation = validateStep5();
+    if (!validation.isValid) {
+      if (validation.shouldAddExtraPack) {
+        addExtraPack();
+      }
+      setStep4SaveStatus('error');
+      setTimeout(() => setStep4SaveStatus('idle'), 3000);
+      showValidationErrorsPopup(validation.errors);
+      return;
+    }
+    setStep4Saved(true);
+    setStep4SaveStatus('success');
+    setShowSaveMessage(false);
+    saveCurrentFormState();
+    persistSection('packaging', { packaging: getSelectedSkuStepData()?.packaging || {} });
+
+    showLoading();
+    try {
+      // ─── SAVE ALL IPCs (all SKUs + subproducts) TO DATABASE ───
+      // The shared util sanitizes empty scaffold rows, coerces types, and
+      // renames keys so the backend serializers accept the payload without 400s.
+      const buildWizardPayload = (skuItem, productName, ipcCode, stepData) =>
+        buildWizardPayloadUtil({
+          skuItem,
+          productName,
+          ipcCode,
+          stepData,
+          buyerCode: formData.buyerCode,
+          ipoId: formData.ipoId,
+          ipoCode: formData.ipoCode,
+          packagingToBackendShape,
+          normalizePackagingBlockStiffenerPlys,
+        });
+
+      const errors = [];
+      let savedCount = 0;
+      // Track per-SKU/SP URL-replacements so we can update formData once at the
+      // end, keeping the UI and draft in sync with what the backend now stores
+      // (blob URLs instead of local File objects).
+      const urlUpdates = [];
+
+      for (let skuIndex = 0; skuIndex < formData.skus.length; skuIndex++) {
+        const skuItem = formData.skus[skuIndex];
+        if (!skuItem) continue;
+
+        // Save the main product for this SKU
+        try {
+          const stepData = skuItem.stepData;
+          const rawPayload = buildWizardPayload(skuItem, skuItem.product, skuItem.ipcCode, stepData);
+          const wizardPayload = await replaceFilesWithBlobUrls(rawPayload, 'factory-code');
+          cleanArtworkFilesForWizard(wizardPayload.artworkMaterials);
+          cleanPackagingFilesForWizard(wizardPayload.packaging);
+          const result = await saveFactoryCodeWizard(wizardPayload);
+          if (result?.id || result?.code) {
+            console.log(`Factory code saved for SKU ${skuIndex + 1}:`, result);
+            savedCount++;
+            urlUpdates.push({
+              skuIndex,
+              spIndex: null,
+              artworkMaterials: wizardPayload.artworkMaterials,
+              packaging: wizardPayload.packaging,
+            });
+          } else if (result?.detail || result?.error) {
+            errors.push(`SKU "${skuItem.sku || skuIndex + 1}": ${result.detail || result.error || 'Unknown error'}`);
+          }
+        } catch (err) {
+          console.error(`Failed to save SKU ${skuIndex + 1}:`, err);
+          errors.push(`SKU "${skuItem.sku || skuIndex + 1}": ${err.message || 'Network error'}`);
+        }
+
+        // Save each subproduct for this SKU
+        if (skuItem.subproducts?.length) {
+          for (let spIndex = 0; spIndex < skuItem.subproducts.length; spIndex++) {
+            const sp = skuItem.subproducts[spIndex];
+            if (!sp) continue;
+            try {
+              const spStepData = sp.stepData;
+              // Build an effective record so the subproduct row is persisted
+              // with its own buyer SKU and Step 0 numbers, not the parent SKU's.
+              // Falls back to the parent only when the subproduct field is empty.
+              const effectiveSp = {
+                ...skuItem,
+                sku: sp.buyerSku || skuItem.sku,
+                setOf: sp.setOf || skuItem.setOf,
+                poQty: sp.poQty || skuItem.poQty,
+                overagePercentage: sp.overagePercentage || skuItem.overagePercentage,
+                deliveryDueDate: sp.deliveryDueDate || skuItem.deliveryDueDate,
+              };
+              const rawPayload = buildWizardPayload(effectiveSp, sp.subproduct, sp.ipcCode, spStepData);
+              const wizardPayload = await replaceFilesWithBlobUrls(rawPayload, 'factory-code');
+              cleanArtworkFilesForWizard(wizardPayload.artworkMaterials);
+              cleanPackagingFilesForWizard(wizardPayload.packaging);
+              const result = await saveFactoryCodeWizard(wizardPayload);
+              if (result?.id || result?.code) {
+                console.log(`Factory code saved for SKU ${skuIndex + 1} SP ${spIndex + 1}:`, result);
+                savedCount++;
+                urlUpdates.push({
+                  skuIndex,
+                  spIndex,
+                  artworkMaterials: wizardPayload.artworkMaterials,
+                  packaging: wizardPayload.packaging,
+                });
+              } else if (result?.detail || result?.error) {
+                errors.push(`SKU "${skuItem.sku || skuIndex + 1}" SP "${sp.subproduct || spIndex + 1}": ${result.detail || result.error || 'Unknown error'}`);
+              }
+            } catch (err) {
+              console.error(`Failed to save SKU ${skuIndex + 1} SP ${spIndex + 1}:`, err);
+              errors.push(`SKU "${skuItem.sku || skuIndex + 1}" SP "${sp.subproduct || spIndex + 1}": ${err.message || 'Network error'}`);
+            }
+          }
+        }
+      }
+
+      // After all uploads succeed, replace File references in formData with the
+      // blob URLs returned by the backend. Without this, the next draft save
+      // strips the Files (File → null in JSON.stringify), and coming back via
+      // IPC Spec shows empty artwork-spec uploads.
+      if (urlUpdates.length) {
+        setFormData((prev) => {
+          const nextSkus = (prev.skus || []).map((sku, sIdx) => {
+            const mainUpdate = urlUpdates.find(
+              (u) => u.skuIndex === sIdx && u.spIndex === null
+            );
+            let nextSku = sku;
+            if (mainUpdate) {
+              nextSku = {
+                ...sku,
+                stepData: {
+                  ...(sku.stepData || {}),
+                  artworkMaterials: mergeArtworkWithUrls(
+                    sku.stepData?.artworkMaterials || [],
+                    mainUpdate.artworkMaterials || []
+                  ),
+                },
+              };
+            }
+            if (nextSku.subproducts?.length) {
+              nextSku = {
+                ...nextSku,
+                subproducts: nextSku.subproducts.map((sp, spIdx) => {
+                  const spUpdate = urlUpdates.find(
+                    (u) => u.skuIndex === sIdx && u.spIndex === spIdx
+                  );
+                  if (!spUpdate) return sp;
+                  return {
+                    ...sp,
+                    stepData: {
+                      ...(sp.stepData || {}),
+                      artworkMaterials: mergeArtworkWithUrls(
+                        sp.stepData?.artworkMaterials || [],
+                        spUpdate.artworkMaterials || []
+                      ),
+                    },
+                  };
+                }),
+              };
+            }
+            return nextSku;
+          });
+          return { ...prev, skus: nextSkus };
+        });
+      }
+
+      if (errors.length > 0) {
+        alert(`Saved ${savedCount} IPC(s) to database.\n\nFailed to save ${errors.length} IPC(s):\n${errors.join('\n')}`);
+      } else {
+        console.log(`All ${savedCount} IPC(s) saved to database successfully.`);
+      }
+
+      // Persist the full wizard state for this IPO so the derived consumption
+      // sheet can be viewed under IPO Management → IPO Derived CNS.
+      await saveToLocalStorage(latestFormDataRef.current);
+
+      setShowFactoryCodePopup(true);
+    } finally {
+      hideLoading();
+    }
   };
 
   // Generate IPC code for SKUs and subproducts
@@ -5702,208 +5822,23 @@ const GenerateFactoryCode = ({
           {/* Navigation Buttons - flowPhase-aware */}
           <div className="">
             {flowPhase === 'ipcSelector' ? null : flowPhase === 'packaging' ? (
-              // Packaging: Save + Prev + Generate Factory Code
+              // Packaging (final step): Previous + single Save button that also
+              // generates the factory code (writes every IPC to the database).
               <div className="flex items-center justify-between" style={{ marginTop: '32px' }}>
                 <Button
                   type="button"
                   variant="outline"
-                  onClick={handleSaveStep4}
+                  onClick={handlePrevious}
+                >
+                  ← Previous
+                </Button>
+                <Button
+                  type="button"
+                  onClick={handleSaveAndGenerate}
                   className={`min-w-[90px] ${step4SaveStatus === 'error' ? 'text-red-600 border-red-500 hover:text-red-700' : step4Saved || step4SaveStatus === 'success' ? 'text-green-600 hover:text-green-700' : ''}`}
                 >
                   {step4SaveStatus === 'error' ? 'Not Saved' : step4Saved || step4SaveStatus === 'success' ? 'Saved' : 'Save'}
                 </Button>
-                <div className="flex items-center gap-3">
-                  {showSaveMessage && flowPhase === 'packaging' && (
-                    <span className="text-red-600 text-sm font-medium">Save first</span>
-                  )}
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={handlePrevious}
-                  >
-                    ← Previous
-                  </Button>
-                  <Button
-                    type="button"
-                    onClick={async () => {
-                      if (!step4Saved) {
-                        setShowSaveMessage(true);
-                        setSaveMessage('Save first');
-                        return;
-                      }
-
-                      showLoading();
-                      try {
-                      // ─── SAVE ALL IPCs (all SKUs + subproducts) TO DATABASE ───
-                      // The shared util sanitizes empty scaffold rows,
-                      // coerces types, and renames keys so the backend
-                      // serializers accept the payload without 400s.
-                      const buildWizardPayload = (skuItem, productName, ipcCode, stepData) =>
-                        buildWizardPayloadUtil({
-                          skuItem,
-                          productName,
-                          ipcCode,
-                          stepData,
-                          buyerCode: formData.buyerCode,
-                          ipoId: formData.ipoId,
-                          ipoCode: formData.ipoCode,
-                          packagingToBackendShape,
-                          normalizePackagingBlockStiffenerPlys,
-                        });
-
-                      const errors = [];
-                      let savedCount = 0;
-                      // Track per-SKU/SP URL-replacements so we can update
-                      // formData once at the end, keeping the UI and draft
-                      // in sync with what the backend now stores (blob URLs
-                      // instead of local File objects).
-                      const urlUpdates = [];
-
-                      for (let skuIndex = 0; skuIndex < formData.skus.length; skuIndex++) {
-                        const skuItem = formData.skus[skuIndex];
-                        if (!skuItem) continue;
-
-                        // Save the main product for this SKU
-                        try {
-                          const stepData = skuItem.stepData;
-                          const rawPayload = buildWizardPayload(skuItem, skuItem.product, skuItem.ipcCode, stepData);
-                          const wizardPayload = await replaceFilesWithBlobUrls(rawPayload, 'factory-code');
-                          cleanArtworkFilesForWizard(wizardPayload.artworkMaterials);
-                          cleanPackagingFilesForWizard(wizardPayload.packaging);
-                          const result = await saveFactoryCodeWizard(wizardPayload);
-                          if (result?.id || result?.code) {
-                            console.log(`Factory code saved for SKU ${skuIndex + 1}:`, result);
-                            savedCount++;
-                            urlUpdates.push({
-                              skuIndex,
-                              spIndex: null,
-                              artworkMaterials: wizardPayload.artworkMaterials,
-                              packaging: wizardPayload.packaging,
-                            });
-                          } else if (result?.detail || result?.error) {
-                            errors.push(`SKU "${skuItem.sku || skuIndex + 1}": ${result.detail || result.error || 'Unknown error'}`);
-                          }
-                        } catch (err) {
-                          console.error(`Failed to save SKU ${skuIndex + 1}:`, err);
-                          errors.push(`SKU "${skuItem.sku || skuIndex + 1}": ${err.message || 'Network error'}`);
-                        }
-
-                        // Save each subproduct for this SKU
-                        if (skuItem.subproducts?.length) {
-                          for (let spIndex = 0; spIndex < skuItem.subproducts.length; spIndex++) {
-                            const sp = skuItem.subproducts[spIndex];
-                            if (!sp) continue;
-                            try {
-                              const spStepData = sp.stepData;
-                              // Build an effective record so the subproduct row
-                              // is persisted with its own buyer SKU and Step 0
-                              // numbers, not the parent SKU's. Falls back to
-                              // the parent only when the subproduct field is
-                              // empty.
-                              const effectiveSp = {
-                                ...skuItem,
-                                sku: sp.buyerSku || skuItem.sku,
-                                setOf: sp.setOf || skuItem.setOf,
-                                poQty: sp.poQty || skuItem.poQty,
-                                overagePercentage: sp.overagePercentage || skuItem.overagePercentage,
-                                deliveryDueDate: sp.deliveryDueDate || skuItem.deliveryDueDate,
-                              };
-                              const rawPayload = buildWizardPayload(effectiveSp, sp.subproduct, sp.ipcCode, spStepData);
-                              const wizardPayload = await replaceFilesWithBlobUrls(rawPayload, 'factory-code');
-                              cleanArtworkFilesForWizard(wizardPayload.artworkMaterials);
-                              cleanPackagingFilesForWizard(wizardPayload.packaging);
-                              const result = await saveFactoryCodeWizard(wizardPayload);
-                              if (result?.id || result?.code) {
-                                console.log(`Factory code saved for SKU ${skuIndex + 1} SP ${spIndex + 1}:`, result);
-                                savedCount++;
-                                urlUpdates.push({
-                                  skuIndex,
-                                  spIndex,
-                                  artworkMaterials: wizardPayload.artworkMaterials,
-                                  packaging: wizardPayload.packaging,
-                                });
-                              } else if (result?.detail || result?.error) {
-                                errors.push(`SKU "${skuItem.sku || skuIndex + 1}" SP "${sp.subproduct || spIndex + 1}": ${result.detail || result.error || 'Unknown error'}`);
-                              }
-                            } catch (err) {
-                              console.error(`Failed to save SKU ${skuIndex + 1} SP ${spIndex + 1}:`, err);
-                              errors.push(`SKU "${skuItem.sku || skuIndex + 1}" SP "${sp.subproduct || spIndex + 1}": ${err.message || 'Network error'}`);
-                            }
-                          }
-                        }
-                      }
-
-                      // After all uploads succeed, replace File references in
-                      // formData with the blob URLs returned by the backend.
-                      // Without this, the next draft save strips the Files
-                      // (File → null in JSON.stringify), and coming back via
-                      // IPC Spec shows empty artwork-spec uploads.
-                      if (urlUpdates.length) {
-                        setFormData((prev) => {
-                          const nextSkus = (prev.skus || []).map((sku, sIdx) => {
-                            const mainUpdate = urlUpdates.find(
-                              (u) => u.skuIndex === sIdx && u.spIndex === null
-                            );
-                            let nextSku = sku;
-                            if (mainUpdate) {
-                              nextSku = {
-                                ...sku,
-                                stepData: {
-                                  ...(sku.stepData || {}),
-                                  artworkMaterials: mergeArtworkWithUrls(
-                                    sku.stepData?.artworkMaterials || [],
-                                    mainUpdate.artworkMaterials || []
-                                  ),
-                                },
-                              };
-                            }
-                            if (nextSku.subproducts?.length) {
-                              nextSku = {
-                                ...nextSku,
-                                subproducts: nextSku.subproducts.map((sp, spIdx) => {
-                                  const spUpdate = urlUpdates.find(
-                                    (u) => u.skuIndex === sIdx && u.spIndex === spIdx
-                                  );
-                                  if (!spUpdate) return sp;
-                                  return {
-                                    ...sp,
-                                    stepData: {
-                                      ...(sp.stepData || {}),
-                                      artworkMaterials: mergeArtworkWithUrls(
-                                        sp.stepData?.artworkMaterials || [],
-                                        spUpdate.artworkMaterials || []
-                                      ),
-                                    },
-                                  };
-                                }),
-                              };
-                            }
-                            return nextSku;
-                          });
-                          return { ...prev, skus: nextSkus };
-                        });
-                      }
-
-                      if (errors.length > 0) {
-                        alert(`Saved ${savedCount} IPC(s) to database.\n\nFailed to save ${errors.length} IPC(s):\n${errors.join('\n')}`);
-                      } else {
-                        console.log(`All ${savedCount} IPC(s) saved to database successfully.`);
-                      }
-
-                      // Persist the full wizard state for this IPO so the
-                      // derived consumption sheet can be viewed under
-                      // IPO Management → IPO Derived CNS.
-                      await saveToLocalStorage(latestFormDataRef.current);
-
-                      setShowFactoryCodePopup(true);
-                      } finally {
-                        hideLoading();
-                      }
-                    }}
-                  >
-                    Generate Factory Code
-                  </Button>
-                </div>
               </div>
             ) : flowPhase === 'ipcFlow' && currentStep === 1 ? (
               // Artwork & Labeling (ipcFlow step 1): Save + Prev + Next

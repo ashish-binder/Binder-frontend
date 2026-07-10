@@ -1510,10 +1510,13 @@ export const previewVpo = async (ipoId, lines) => {
   return await response.json();
 };
 
-export const issueVpo = async (ipoId, lines) => {
+// `body` includes `lines` plus optional vendor/header fields for the printable
+// Purchase Order: { lines, vendor_id, payment_terms, delivery_due_date, remarks }.
+export const issueVpo = async (ipoId, body) => {
+  const payload = Array.isArray(body) ? { lines: body } : (body || {});
   const response = await apiRequest(`ims/purchase/${ipoId}/vpo/issue/`, {
     method: 'POST',
-    body: JSON.stringify({ lines }),
+    body: JSON.stringify(payload),
   });
   return await response.json();
 };
@@ -1555,6 +1558,13 @@ export const getVpoHistory = async ({ ipoId, status } = {}) => {
 
 export const getVpoDetail = async (vpoId) => {
   const response = await apiRequest(`ims/purchase/vpos/${vpoId}/`);
+  return await response.json();
+};
+
+// Print-ready Purchase Order structure (server-side source of truth). Useful
+// for debugging the printable VPO and for any server-rendered copy.
+export const getVpoDocument = async (vpoId) => {
+  const response = await apiRequest(`ims/purchase/vpos/${vpoId}/document/`);
   return await response.json();
 };
 

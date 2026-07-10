@@ -155,6 +155,11 @@ const DashboardContent = ({
             </p>
             <IPODerivedCNS
               ipo={selectedIpoForDerivedCNS}
+              onNavigateToMasterCNS={() => {
+                const target = selectedIpoForDerivedCNS;
+                setSelectedIpoForDerivedCNS(null);
+                setSelectedIpoForCNS({ ...target });
+              }}
               onNavigateToSpec={(sectionKey, skuId) => {
                 const SECTION_MAP = {
                   "product-spec": { flowPhase: "step0", currentStep: 0 },

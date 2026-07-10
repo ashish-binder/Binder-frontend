@@ -48,21 +48,6 @@ const formatHeader = (s) => {
   );
 };
 
-// Same storage shape the IPO Derived CNS Sheet reads from, so we can resolve
-// Net CNS/PC and Unit for the yarn subtab directly from the Derived Sheet source.
-const DERIVED_STORAGE_KEY = 'factoryCodeFormData';
-const derivedStorageKey = (ipoCode) => (ipoCode ? `${DERIVED_STORAGE_KEY}:${ipoCode}` : DERIVED_STORAGE_KEY);
-
-const loadDerivedLocalSnapshot = (ipoCode) => {
-  try {
-    const raw = localStorage.getItem(derivedStorageKey(ipoCode));
-    if (!raw) return null;
-    return JSON.parse(raw);
-  } catch {
-    return null;
-  }
-};
-
 const normKey = (s) => String(s || '').trim().toLowerCase();
 
 // Build a lookup keyed by (ipcCode, materialDescription) → { netCns, unit }
@@ -1338,18 +1323,12 @@ const IPOMasterCNS = ({ ipo }) => {
     return () => { cancelled = true; };
   }, [ipo?.ipoId, ipo?.id]);
 
-  // Load the same Derived CNS Sheet snapshot that IPODerivedCNS uses.
-  // Prefer the localStorage copy (what the user actually sees on that page);
-  // fall back to the server draft if localStorage is empty.
+  // Load the same Derived CNS Sheet data that IPODerivedCNS uses — from the
+  // database only (the per-IPO server draft). No localStorage.
   useEffect(() => {
     let cancelled = false;
     const ipoCode = ipo?.ipoCode || ipo?.code || '';
     const ipoId = ipo?.ipoId || ipo?.id || null;
-    const local = loadDerivedLocalSnapshot(ipoCode);
-    if (local) {
-      setDerivedFormData(local);
-      return () => { cancelled = true; };
-    }
     if (!ipoId && !ipoCode) return () => {};
     (async () => {
       try {
@@ -1399,12 +1378,6 @@ const IPOMasterCNS = ({ ipo }) => {
   const yarnDebug = useMemo(() => {
     const ipoCodeForKey = ipo?.ipoCode || ipo?.code || '';
     const allLocalKeys = [];
-    try {
-      for (let i = 0; i < localStorage.length; i++) {
-        const k = localStorage.key(i);
-        if (k && k.startsWith('factoryCodeFormData')) allLocalKeys.push(k);
-      }
-    } catch {}
     const skus = Array.isArray(derivedFormData?.skus) ? derivedFormData.skus : [];
     const allRms = [];
     skus.forEach((sku) => {

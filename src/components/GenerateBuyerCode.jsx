@@ -502,11 +502,9 @@ const GenerateBuyerCode = ({ onBack, initialData = null, onSaved }) => {
           createdAt: item.created_at || item.createdAt || '',
         })) : [];
         setExistingBuyerCodes(mapped);
-        localStorage.setItem('buyerCodes', JSON.stringify(mapped));
       } catch (error) {
-        console.warn('Failed to load buyer codes from API, using localStorage:', error);
-        const stored = JSON.parse(localStorage.getItem('buyerCodes') || '[]');
-        setExistingBuyerCodes(stored);
+        console.warn('Failed to load buyer codes from API:', error);
+        setExistingBuyerCodes([]);
       }
     };
     loadBuyerCodes();
@@ -578,9 +576,9 @@ const GenerateBuyerCode = ({ onBack, initialData = null, onSaved }) => {
 
   const generateBuyerCode = (buyerName, retailer) => {
     try {
-      // Get existing codes from localStorage
-      const existingCodes = JSON.parse(localStorage.getItem('buyerCodes') || '[]');
-      
+      // Use codes already loaded from the API
+      const existingCodes = existingBuyerCodes;
+
       // Normalize buyer name for comparison
       const normalizedBuyerName = buyerName.trim().toLowerCase();
       
@@ -683,15 +681,11 @@ const GenerateBuyerCode = ({ onBack, initialData = null, onSaved }) => {
           createdAt: responseData?.created_at || responseData?.createdAt || initialData?.createdAt || new Date().toISOString()
         };
 
-        const existingCodes = JSON.parse(localStorage.getItem('buyerCodes') || '[]');
         const currentCode = (initialData?.code || initialData?.id || '').toString();
-        const updatedCodes = existingCodes.map((item) => {
+        setExistingBuyerCodes((prev) => prev.map((item) => {
           const itemCode = (item.code || item.id || '').toString();
           return itemCode === currentCode ? { ...item, ...updatedBuyerData } : item;
-        });
-
-        localStorage.setItem('buyerCodes', JSON.stringify(updatedCodes));
-        setExistingBuyerCodes(updatedCodes);
+        }));
         setIsGenerating(false);
 
         if (typeof onSaved === 'function') {
@@ -728,10 +722,7 @@ const GenerateBuyerCode = ({ onBack, initialData = null, onSaved }) => {
           createdAt: new Date().toISOString()
         };
         
-        const existingCodes = JSON.parse(localStorage.getItem('buyerCodes') || '[]');
-        existingCodes.push(newBuyerData);
-        localStorage.setItem('buyerCodes', JSON.stringify(existingCodes));
-        setExistingBuyerCodes(existingCodes);
+        setExistingBuyerCodes((prev) => [...prev, newBuyerData]);
 
         // Set the generated code to show success screen
         setGeneratedCode(newCode);

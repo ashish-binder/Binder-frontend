@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { getBuyerCodes, getVendorCodes, createPurchaseOrder } from '../services/integration';
+import { getBuyerCodes, getVendorCodes, getPurchaseOrders, createPurchaseOrder } from '../services/integration';
 import { scrollToFirstError } from '@/utils/scrollToFirstError';
 
 const GeneratePOCode = ({ onBack }) => {
@@ -29,6 +29,7 @@ const GeneratePOCode = ({ onBack }) => {
   const [isGenerating, setIsGenerating] = useState(false);
   const [buyerCodes, setBuyerCodes] = useState([]);
   const [vendorCodes, setVendorCodes] = useState([]);
+  const [poCodes, setPoCodes] = useState([]);
 
   useEffect(() => {
     const loadCodes = async () => {
@@ -52,12 +53,16 @@ const GeneratePOCode = ({ onBack }) => {
           vendorName: item.vendor_name || item.vendorName || '',
         })) : [];
         setVendorCodes(mappedVendors);
+
+        // Load existing purchase orders from API
+        const poResponse = await getPurchaseOrders();
+        const pos = poResponse.results || poResponse.data || poResponse || [];
+        setPoCodes(Array.isArray(pos) ? pos : []);
       } catch (error) {
-        console.warn('Failed to load codes from API, using localStorage:', error);
-        const buyers = JSON.parse(localStorage.getItem('buyerCodes') || '[]');
-        const vendors = JSON.parse(localStorage.getItem('vendorCodes') || '[]');
-        setBuyerCodes(buyers);
-        setVendorCodes(vendors);
+        console.warn('Failed to load codes from API:', error);
+        setBuyerCodes([]);
+        setVendorCodes([]);
+        setPoCodes([]);
       }
     };
     loadCodes();
@@ -142,7 +147,7 @@ const GeneratePOCode = ({ onBack }) => {
 
   const generatePOCode = () => {
     try {
-      const existingPOs = JSON.parse(localStorage.getItem('poCodes') || '[]');
+      const existingPOs = poCodes;
       let nextNumber = 1001;
       
       if (existingPOs.length > 0) {
@@ -200,16 +205,13 @@ const GeneratePOCode = ({ onBack }) => {
       
       if (response.status === 'success' && response.data) {
         const newPOCode = response.data.po_code;
-        
-        // Update localStorage cache
-        const existingPOs = JSON.parse(localStorage.getItem('poCodes') || '[]');
-        existingPOs.push({
+
+        setPoCodes((prev) => [...prev, {
           poNo: newPOCode,
           ...formData,
           createdAt: new Date().toISOString()
-        });
-        localStorage.setItem('poCodes', JSON.stringify(existingPOs));
-        
+        }]);
+
         setGeneratedCode(newPOCode);
       } else {
         throw new Error(response.message || 'Failed to create Purchase Order');

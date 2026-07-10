@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { SidebarContext } from "../context/SidebarContext";
-import { getIPOs } from "../services/integration";
+import { getIPOs, getCompanyEssentials } from "../services/integration";
 import { useLoading } from "../context/LoadingContext";
 import "./Dashboard.css";
 import { normalizeOrderType } from "../utils/orderType";
@@ -239,18 +239,13 @@ const Dashboard = () => {
             }))
           : [];
         setExistingIPOs(normalized);
-        localStorage.setItem(
-          "internalPurchaseOrders",
-          JSON.stringify(normalized),
-        );
       } catch (e) {
         setExistingIPOs([]);
       }
       try {
-        const storedEssentials = JSON.parse(
-          localStorage.getItem("companyEssentials") || "[]",
-        );
-        setExistingCompanyEssentials(storedEssentials);
+        const essRes = await getCompanyEssentials();
+        const essentials = essRes?.results || essRes?.data || essRes || [];
+        setExistingCompanyEssentials(Array.isArray(essentials) ? essentials : []);
       } catch (e) {
         setExistingCompanyEssentials([]);
       }

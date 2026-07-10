@@ -303,26 +303,6 @@ export const persistCourierRecords = (records) => {
   window.dispatchEvent(new Event(COURIER_UPDATE_EVENT));
 };
 
-const readStoredIPOs = () => {
-  if (!isBrowser) return [];
-  try {
-    const parsed = JSON.parse(localStorage.getItem('internalPurchaseOrders') || '[]');
-    if (!Array.isArray(parsed)) return [];
-    return parsed.map((item) => ({
-      ipoCode: item.ipoCode || item.ipo_code || item.code || '',
-      orderType: normalizeOrderType(item.orderType || item.order_type || ''),
-      buyerCode: item.buyerCode || item.buyer_code_text || '',
-      type: item.type || item.company_type || '',
-      programName: item.programName || item.program_name || '',
-      poSrNo: item.poSrNo || item.po_sr_no || '',
-      createdAt: item.createdAt || item.created_at || '',
-    }));
-  } catch (error) {
-    console.warn('Unable to read IPOs from storage:', error);
-    return [];
-  }
-};
-
 const mapFetchedIPO = (item) => ({
   ipoCode: item.ipo_code || item.ipoCode || item.code || '',
   orderType: normalizeOrderType(item.order_type || item.orderType || ''),
@@ -459,7 +439,7 @@ const mergeCourierRecords = (apiRecords, cachedRecords) => {
  * fallback), keeping both in sync with cross-tab / cross-view events.
  * ------------------------------------------------------------------ */
 export const useCourierIpos = () => {
-  const [ipos, setIpos] = useState(() => dedupeIpos(readStoredIPOs()));
+  const [ipos, setIpos] = useState([]);
   const { showLoading, hideLoading } = useLoading();
 
   useEffect(() => {
@@ -471,34 +451,21 @@ export const useCourierIpos = () => {
         const response = await getIPOs();
         const rawItems = response?.results || response?.data || response || [];
         const mapped = dedupeIpos(Array.isArray(rawItems) ? rawItems.map(mapFetchedIPO) : []);
-
-        if (mapped.length > 0) {
-          if (!cancelled) setIpos(mapped);
-          if (isBrowser) {
-            localStorage.setItem('internalPurchaseOrders', JSON.stringify(mapped));
-            window.dispatchEvent(new Event('internalPurchaseOrdersUpdated'));
-          }
-          return;
-        }
+        if (!cancelled) setIpos(mapped);
       } catch (error) {
-        console.warn('Courier screen failed to refresh IPOs from API, using local cache:', error);
+        console.warn('Courier screen failed to refresh IPOs from API:', error);
+        if (!cancelled) setIpos([]);
       } finally {
         hideLoading();
       }
-
-      if (!cancelled) setIpos(dedupeIpos(readStoredIPOs()));
-    };
-
-    const syncIposFromStorage = () => {
-      if (!cancelled) setIpos(dedupeIpos(readStoredIPOs()));
     };
 
     syncIpos();
-    window.addEventListener('internalPurchaseOrdersUpdated', syncIposFromStorage);
+    window.addEventListener('internalPurchaseOrdersUpdated', syncIpos);
 
     return () => {
       cancelled = true;
-      window.removeEventListener('internalPurchaseOrdersUpdated', syncIposFromStorage);
+      window.removeEventListener('internalPurchaseOrdersUpdated', syncIpos);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

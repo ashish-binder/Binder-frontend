@@ -266,7 +266,6 @@ const PACKAGING_SIZE_FIELD_MAP = {
  * - Row 7: Artwork (after work orders, per component)
  */
 const ConsumptionSheet = forwardRef(({ formData = {}, isEditMode = false, onEditSection }, ref) => {
-  const PURCHASE_SHARE_KEY = 'purchaseSharedData';
 
   const editSectionProps = (sectionKey, product) => {
     if (!isEditMode) return {};
@@ -1109,19 +1108,12 @@ const ConsumptionSheet = forwardRef(({ formData = {}, isEditMode = false, onEdit
     };
   };
 
+  // The Master CNS / Purchase sections now read everything from the database
+  // (the per-IPO server draft + relational rows), so sharing no longer writes a
+  // browser-local snapshot. Kept as a no-op success for any existing caller.
   const handleShareToPurchase = () => {
     const payload = buildPurchaseSharePayload();
-    if (!payload.code) return false;
-    const existing = JSON.parse(localStorage.getItem(PURCHASE_SHARE_KEY) || '[]');
-    const next = Array.isArray(existing) ? [...existing] : [];
-    const idx = next.findIndex((entry) => entry.code === payload.code && entry.orderType === payload.orderType);
-    if (idx >= 0) {
-      next[idx] = payload;
-    } else {
-      next.push(payload);
-    }
-    localStorage.setItem(PURCHASE_SHARE_KEY, JSON.stringify(next));
-    return true;
+    return Boolean(payload.code);
   };
 
   useImperativeHandle(ref, () => ({

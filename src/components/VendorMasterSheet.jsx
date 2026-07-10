@@ -246,38 +246,13 @@ const VendorMasterSheet = ({ onBack, onEditVendor }) => {
           );
         }
 
-        // 3. Merge with localStorage to fill any gaps
-        const storedVendors = JSON.parse(localStorage.getItem('vendorCodes') || '[]');
-        const storedMap = {};
-        storedVendors.forEach(s => {
-          const c = (s.code || s.id || '').toString();
-          if (c) storedMap[c] = s;
-        });
-
-        vendorList = vendorList.map(v => {
-          const c = (v.code || v.id || '').toString();
-          const stored = storedMap[c];
-          if (stored) {
-            const merged = { ...stored, ...Object.fromEntries(
-              Object.entries(v).filter(([, val]) => hasValue(val))
-            )};
-            delete storedMap[c];
-            return merged;
-          }
-          return v;
-        });
-
-        Object.values(storedMap).forEach(s => vendorList.push(s));
-
-        // 4. Normalize all vendor data
+        // 3. Normalize all vendor data
         const normalizedVendors = vendorList.map(v => normalizeVendor(v));
         setVendors(normalizedVendors);
       } catch (err) {
         console.error('Error fetching vendors:', err);
         setError('Failed to load vendors');
-        // Fallback to localStorage only on error
-        const storedVendors = JSON.parse(localStorage.getItem('vendorCodes') || '[]');
-        setVendors(storedVendors.map(v => normalizeVendor(v)));
+        setVendors([]);
       } finally {
         setLoading(false);
         hideLoading();
@@ -334,9 +309,7 @@ const VendorMasterSheet = ({ onBack, onEditVendor }) => {
           console.warn(`API delete with "${identifier}" failed:`, err);
         }
       }
-      const updatedVendors = vendors.filter(v => v.code !== vendor.code);
-      setVendors(updatedVendors);
-      localStorage.setItem('vendorCodes', JSON.stringify(updatedVendors));
+      setVendors((prev) => prev.filter(v => v.code !== vendor.code));
     }
   };
 

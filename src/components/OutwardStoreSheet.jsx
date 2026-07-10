@@ -5,6 +5,8 @@ import {
   getCompanyEssentials,
   getIPOs,
   getOutwardStoreSheetChoices,
+  getVpoHistory,
+  getVpoDetail,
 } from "../services/integration";
 import ThemedSelect from "./IMS/StockSheet/ThemedSelect";
 
@@ -211,6 +213,10 @@ const OutwardStoreSheet = ({ onBack }) => {
   });
   const [ipoOptions, setIpoOptions] = useState([]);
   const [companyEssentialOptions, setCompanyEssentialOptions] = useState([]);
+  // Issued VPOs used to auto-fill the dispatch line items.
+  const [issuedVpos, setIssuedVpos] = useState([]);
+  const [selectedIssuedVpo, setSelectedIssuedVpo] = useState("");
+  const [loadingVpoItems, setLoadingVpoItems] = useState(false);
   const [loadingChoices, setLoadingChoices] = useState(true);
   const [loadingIpoOptions, setLoadingIpoOptions] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -369,6 +375,45 @@ const OutwardStoreSheet = ({ onBack }) => {
           ? row.usn_links.filter((link) => link.id !== linkId)
           : row.usn_links,
     }));
+  };
+
+  // Load issued VPOs (scoped to the selected IPO when present) for auto-fill.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await getVpoHistory({ ipoId: selectedIpo || undefined, status: "issued" });
+        if (!cancelled) setIssuedVpos(res?.results || []);
+      } catch {
+        if (!cancelled) setIssuedVpos([]);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [selectedIpo]);
+
+  const handleSelectIssuedVpo = async (vpoId) => {
+    setSelectedIssuedVpo(vpoId);
+    if (!vpoId) return;
+    setLoadingVpoItems(true);
+    try {
+      const detail = await getVpoDetail(vpoId);
+      const lines = detail?.lines || [];
+      if (lines.length) {
+        setRows(
+          lines.map((l) => ({
+            ...createEmptyRow(),
+            particulars: l.material_description || "",
+            dispatch_quantity: l.qty != null ? String(l.qty) : "",
+            unit: l.unit || "CM",
+            remark: l.remark || "",
+          }))
+        );
+      }
+    } catch {
+      /* leave rows as-is on failure */
+    } finally {
+      setLoadingVpoItems(false);
+    }
   };
 
   const addMainRow = () => {
@@ -762,6 +807,22 @@ const OutwardStoreSheet = ({ onBack }) => {
                   }))}
                 />
               )}
+            </div>
+
+            {/* Row 5 — Select VPO to auto-fill dispatch items */}
+            <div>
+              <label className={LABEL}>
+                Select VPO (auto-fill items){loadingVpoItems ? " — loading…" : ""}
+              </label>
+              <ThemedSelect
+                value={selectedIssuedVpo}
+                onChange={handleSelectIssuedVpo}
+                placeholder="-- Select issued VPO --"
+                options={issuedVpos.map((v) => ({
+                  value: v.id,
+                  label: `${v.vpo_number}${v.ipo_code ? ` — ${v.ipo_code}` : ""}`,
+                }))}
+              />
             </div>
           </div>
         </div>

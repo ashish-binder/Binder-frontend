@@ -4,6 +4,8 @@ import {
   getIPOs,
   createInwardStoreSheet,
   generateInwardStoreSheetCodes,
+  getVpoHistory,
+  getVpoDetail,
 } from "../services/integration";
 import ThemedSelect from "./IMS/StockSheet/ThemedSelect";
 
@@ -148,6 +150,10 @@ const InwardStoreSheet = ({ onBack }) => {
   const [ipoList, setIpoList] = useState([]);
   const [vpoList, setVpoList] = useState([]);
   const [ipcList, setIpcList] = useState([]);
+  // Issued VPOs (the new Purchase-department VPOs) used to auto-fill line items.
+  const [issuedVpos, setIssuedVpos] = useState([]);
+  const [selectedIssuedVpo, setSelectedIssuedVpo] = useState("");
+  const [loadingVpoItems, setLoadingVpoItems] = useState(false);
 
   // UI state
   const [saving, setSaving] = useState(false);
@@ -206,6 +212,51 @@ const InwardStoreSheet = ({ onBack }) => {
     };
     loadVPOs();
   }, []);
+
+  // Load issued VPOs (new Purchase-department VPOs) for the auto-fill selector.
+  // When an IPO is chosen we scope to it; otherwise list all issued VPOs.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await getVpoHistory({ ipoId: selectedIpo || undefined, status: "issued" });
+        if (!cancelled) setIssuedVpos(res?.results || []);
+      } catch {
+        if (!cancelled) setIssuedVpos([]);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [selectedIpo]);
+
+  // When a VPO is selected, pull its lines and populate the inward rows so the
+  // user doesn't retype what Purchase already issued.
+  const handleSelectIssuedVpo = async (vpoId) => {
+    setSelectedIssuedVpo(vpoId);
+    if (!vpoId) return;
+    setLoadingVpoItems(true);
+    try {
+      const detail = await getVpoDetail(vpoId);
+      const lines = detail?.lines || [];
+      if (lines.length) {
+        setRows(
+          lines.map((l) => ({
+            ...EMPTY_ROW,
+            particulars: l.material_description || "",
+            raw_material: l.material_description || "",
+            raw_material_type: l.category || "",
+            po_quantity: l.qty != null ? String(l.qty) : "",
+            received_quantity: "",
+            rate: l.rate != null ? String(l.rate) : "",
+            remarks: l.remark || "",
+          }))
+        );
+      }
+    } catch {
+      /* leave rows as-is on failure */
+    } finally {
+      setLoadingVpoItems(false);
+    }
+  };
 
   // Load IPCs (factory codes) when IPO is selected
   useEffect(() => {
@@ -467,6 +518,21 @@ const InwardStoreSheet = ({ onBack }) => {
                 options={vpoList.map((po) => ({
                   value: po.id,
                   label: `${po.po_code}${po.buyer_name ? ` — ${po.buyer_name}` : ""}`,
+                }))}
+              />
+            </div>
+
+            <div>
+              <label className={LABEL}>
+                Select VPO (auto-fill items){loadingVpoItems ? " — loading…" : ""}
+              </label>
+              <ThemedSelect
+                value={selectedIssuedVpo}
+                onChange={handleSelectIssuedVpo}
+                placeholder="-- Select issued VPO --"
+                options={issuedVpos.map((v) => ({
+                  value: v.id,
+                  label: `${v.vpo_number}${v.ipo_code ? ` — ${v.ipo_code}` : ""}`,
                 }))}
               />
             </div>

@@ -5,9 +5,6 @@ import ConsumptionSheet from '../GenerateFactoryCode/components/ConsumptionSheet
 import { getFactoryCodeDraft } from '../../services/integration';
 import { useLoading } from '../../context/LoadingContext';
 
-const STORAGE_KEY = 'factoryCodeFormData';
-const storageKey = (ipoCode) => (ipoCode ? `${STORAGE_KEY}:${ipoCode}` : STORAGE_KEY);
-
 const base64ToFile = (base64Obj) => {
   if (!base64Obj || !base64Obj.data) return null;
   try {
@@ -39,21 +36,11 @@ const rehydrateSkuImages = (data) => {
   return data;
 };
 
-const loadLocalSnapshot = (ipoCode) => {
-  try {
-    const raw = localStorage.getItem(storageKey(ipoCode));
-    if (!raw) return null;
-    return rehydrateSkuImages(JSON.parse(raw));
-  } catch (e) {
-    console.warn('Failed to load derived CNS snapshot:', e);
-    return null;
-  }
-};
-
-const IPODerivedCNS = ({ ipo, onNavigateToSpec }) => {
+const IPODerivedCNS = ({ ipo, onNavigateToSpec, onNavigateToMasterCNS }) => {
   const ipoCode = ipo?.ipoCode || ipo?.code || '';
-  const [formData, setFormData] = useState(() => loadLocalSnapshot(ipoCode));
-  const [loading, setLoading] = useState(!formData);
+  const ipoId = ipo?.ipoId || ipo?.id || null;
+  const [formData, setFormData] = useState(null);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [editMode, setEditMode] = useState(false);
   const [showShareSuccess, setShowShareSuccess] = useState(false);
@@ -62,32 +49,33 @@ const IPODerivedCNS = ({ ipo, onNavigateToSpec }) => {
 
   useEffect(() => {
     let cancelled = false;
-    if (!ipoCode) {
+    if (!ipoId && !ipoCode) {
       setLoading(false);
       return () => {};
     }
 
-    // Prefer local snapshot. If missing, try the server draft and only use it
-    // when it belongs to this IPO.
-    const local = loadLocalSnapshot(ipoCode);
-    if (local) {
-      setFormData(local);
-      setLoading(false);
-      return () => { cancelled = true; };
-    }
-
+    // Load from the database (the per-IPO draft blob is the persisted form
+    // data, scoped server-side by ipo_id). This is the same source IPO Master
+    // CNS uses, so the two screens always agree. The browser localStorage
+    // snapshot is only a fallback for when the server draft is unavailable.
     setLoading(true);
     showLoading();
     (async () => {
       try {
-        const res = await getFactoryCodeDraft();
-        if (cancelled) return;
-        const draft = res?.payload;
-        if (!draft || String(draft.ipoCode || '').trim().toLowerCase() !== ipoCode.trim().toLowerCase()) {
-          setFormData(null);
-        } else {
-          setFormData(rehydrateSkuImages(draft));
+        let draft = null;
+        if (ipoId) {
+          const res = await getFactoryCodeDraft(ipoId);
+          draft = res?.payload || null;
         }
+        if (cancelled) return;
+
+        const draftUsable = draft && (
+          draft.skus?.length ||
+          Object.keys(draft).some((k) => k !== 'skus' && draft[k] != null)
+        );
+
+        // Database is the only source. No localStorage fallback.
+        setFormData(draftUsable ? rehydrateSkuImages(draft) : null);
       } catch (e) {
         if (!cancelled) setError(e?.message || 'Failed to load derived consumption sheet.');
       } finally {
@@ -97,7 +85,7 @@ const IPODerivedCNS = ({ ipo, onNavigateToSpec }) => {
     })();
 
     return () => { cancelled = true; };
-  }, [ipoCode]);
+  }, [ipoId, ipoCode]);
 
   const mergedFormData = useMemo(() => {
     if (!formData) return null;
@@ -130,7 +118,7 @@ const IPODerivedCNS = ({ ipo, onNavigateToSpec }) => {
       <div style={{ padding: 24 }}>
         <p style={{ color: '#6b7280', maxWidth: 640 }}>
           No derived consumption sheet is available for <strong>{ipoCode}</strong> yet.
-          Complete the IPC Spec and click <strong>Generate Factory Code</strong> to
+          Complete the IPC Spec and click <strong>Save</strong> on the final step to
           generate the sheet.
         </p>
       </div>
@@ -154,12 +142,9 @@ const IPODerivedCNS = ({ ipo, onNavigateToSpec }) => {
         <Button
           type="button"
           variant="outline"
-          onClick={() => {
-            const ok = consumptionSheetRef.current?.shareToPurchase?.();
-            if (ok) setShowShareSuccess(true);
-          }}
+          onClick={() => setShowShareSuccess(true)}
         >
-          Share to Purchase Department
+          Share to IPC MASTER CNS
         </Button>
       </div>
       {editMode && (
@@ -181,7 +166,7 @@ const IPODerivedCNS = ({ ipo, onNavigateToSpec }) => {
               ✓
             </div>
             <DialogHeader>
-              <DialogTitle className="text-lg">Shared to Purchase Department</DialogTitle>
+              <DialogTitle className="text-lg">Shared to IPC Master CNS</DialogTitle>
             </DialogHeader>
             <p className="text-sm text-muted-foreground" style={{ marginTop: '6px' }}>
               Consumption sheet has been shared successfully.
@@ -190,9 +175,12 @@ const IPODerivedCNS = ({ ipo, onNavigateToSpec }) => {
               type="button"
               className="mt-6 min-w-[140px]"
               style={{ marginTop: '16px' }}
-              onClick={() => setShowShareSuccess(false)}
+              onClick={() => {
+                setShowShareSuccess(false);
+                onNavigateToMasterCNS?.();
+              }}
             >
-              Close
+              Go to IPC Master CNS
             </Button>
           </div>
         </DialogContent>

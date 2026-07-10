@@ -1,7 +1,7 @@
 import { useState } from "react";
 import IpoCascadingPicker from "./purchase/IpoCascadingPicker";
 import PurchaseMasterCnsSheet from "./purchase/PurchaseMasterCnsSheet";
-import VpoHistory from "./purchase/VpoHistory";
+import { VpoHistory } from "./purchase/vpo";
 
 // Top-level Purchase route. Three views:
 //   'picker'     → cascading IPO Type → IPO list

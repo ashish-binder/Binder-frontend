@@ -64,38 +64,13 @@ const BuyerMasterSheet = ({ onBack, onEditBuyer }) => {
           }
         }
 
-        // 2. Merge with localStorage — fill in any fields the API didn't return
-        const storedBuyers = JSON.parse(localStorage.getItem('buyerCodes') || '[]');
-        const storedMap = {};
-        storedBuyers.forEach(s => {
-          const c = (s.code || s.id || '').toString();
-          if (c) storedMap[c] = s;
-        });
-
-        buyerList = buyerList.map(b => {
-          const c = (b.code || b.id || '').toString();
-          const stored = storedMap[c];
-          if (stored) {
-            const merged = { ...stored, ...Object.fromEntries(
-              Object.entries(b).filter(([, val]) => hasValue(val))
-            )};
-            delete storedMap[c];
-            return merged;
-          }
-          return b;
-        });
-
-        Object.values(storedMap).forEach(s => buyerList.push(s));
-
-        // 3. Normalize all buyer data
+        // 2. Normalize all buyer data
         const normalizedBuyers = buyerList.map(b => normalizeBuyer(b));
         setBuyers(normalizedBuyers);
       } catch (err) {
         console.error('Error fetching buyers:', err);
         setError('Failed to load buyers');
-        // Fallback to localStorage only on error
-        const storedBuyers = JSON.parse(localStorage.getItem('buyerCodes') || '[]');
-        setBuyers(storedBuyers.map(b => normalizeBuyer(b)));
+        setBuyers([]);
       } finally {
         setLoading(false);
         hideLoading();
@@ -157,9 +132,7 @@ const BuyerMasterSheet = ({ onBack, onEditBuyer }) => {
           console.warn(`API delete with "${identifier}" failed:`, err);
         }
       }
-      const updatedBuyers = buyers.filter(b => b.code !== buyer.code);
-      setBuyers(updatedBuyers);
-      localStorage.setItem('buyerCodes', JSON.stringify(updatedBuyers));
+      setBuyers((prev) => prev.filter(b => b.code !== buyer.code));
     }
   };
 

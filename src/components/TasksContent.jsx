@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import ThemedSelect from "./IMS/StockSheet/ThemedSelect";
-import { createTask } from "../services/integration";
+import { createTask, getIPOs } from "../services/integration";
 import { uploadToBlob } from "../services/blobUpload";
 import { normalizeOrderType } from "../utils/orderType";
 
@@ -287,15 +287,20 @@ const TasksContent = ({ initialView = "assign" }) => {
   }, []);
 
   useEffect(() => {
-    const loadIPOs = () => {
+    const loadIPOs = async () => {
       try {
-        const stored = JSON.parse(
-          localStorage.getItem("internalPurchaseOrders") || "[]",
-        );
-        const normalized = Array.isArray(stored)
-          ? stored.map((ipo) => ({
-              ...ipo,
-              orderType: normalizeOrderType(ipo.orderType || ipo.order_type),
+        const response = await getIPOs();
+        const ipos = response?.results || response?.data || response || [];
+        const normalized = Array.isArray(ipos)
+          ? ipos.map((ipo) => ({
+              ipoId: ipo.id || ipo.ipoId || null,
+              ipoCode: ipo.ipo_code || ipo.ipoCode || "",
+              orderType: normalizeOrderType(ipo.order_type || ipo.orderType || ""),
+              buyerCode: ipo.buyer_code_text || ipo.buyerCode || "",
+              type: ipo.company_type || ipo.type || "",
+              programName: ipo.program_name || ipo.programName || "",
+              poSrNo: ipo.po_sr_no || ipo.poSrNo || 1,
+              createdAt: ipo.created_at || ipo.createdAt || "",
             }))
           : [];
         setExistingIPOs(normalized);
@@ -306,16 +311,9 @@ const TasksContent = ({ initialView = "assign" }) => {
     };
 
     loadIPOs();
-    const handleStorage = (event) => {
-      if (event.key === "internalPurchaseOrders") {
-        loadIPOs();
-      }
-    };
     const handleIpoUpdate = () => loadIPOs();
-    window.addEventListener("storage", handleStorage);
     window.addEventListener("internalPurchaseOrdersUpdated", handleIpoUpdate);
     return () => {
-      window.removeEventListener("storage", handleStorage);
       window.removeEventListener(
         "internalPurchaseOrdersUpdated",
         handleIpoUpdate,

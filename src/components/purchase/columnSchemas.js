@@ -89,8 +89,10 @@ export const COLUMN_SCHEMAS = {
   'raw_material:fabric': [
     ...fixedFront([
       { key: 'material_description', label: 'Raw Material', align: 'left', width: 280 },
-      { key: 'purchase_width', label: 'Purchase Width / Unit', align: 'right', width: 160 },
-      { key: 'purchase_length_qty', label: 'Purchase Length Qty', align: 'right', width: 160 },
+      // Editable + prefilled from what was saved on IPO Master CNS.
+      { key: 'purchase_width', label: 'Purchase Width', align: 'right', width: 150, editable: true },
+      { key: 'purchase_length_qty', label: 'Purchase Length Qty', align: 'right', width: 170, editable: true },
+      { key: 'gross_width_multiple', label: 'Gross Width Multiple', align: 'right', width: 170, editable: true },
       unitCol,
     ]),
     ...tail,

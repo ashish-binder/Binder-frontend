@@ -3,6 +3,7 @@ import { Check } from "lucide-react";
 import BaseFormTemplate from "./BaseFormTemplate";
 import { formsConfig } from "./formConfig";
 import ThemedSelect from "../IMS/StockSheet/ThemedSelect";
+import { getIPOs } from "../../services/integration";
 import {
   getFormDisplayName,
   getOrderTypeLabel,
@@ -181,7 +182,7 @@ const sortEntries = (entries = []) =>
       return left.code.localeCompare(right.code);
     });
 
-const loadFactorySavedEntries = () => {
+const loadFactorySavedEntries = (ipoSource = []) => {
   const keySet = new Set([FACTORY_STORAGE_KEY]);
   for (let index = 0; index < localStorage.length; index += 1) {
     const key = localStorage.key(index);
@@ -231,10 +232,6 @@ const loadFactorySavedEntries = () => {
     );
   });
 
-  const ipoSource = parseJson(
-    localStorage.getItem(INTERNAL_PURCHASE_ORDERS_KEY),
-    [],
-  );
   if (!Array.isArray(ipoSource)) return [];
 
   const combined = new Map();
@@ -315,7 +312,7 @@ const UQRFormsPreview = ({ mode = "forms" }) => {
   const [selectedFormKey, setSelectedFormKey] = useState("");
 
   useEffect(() => {
-    const loadData = () => {
+    const loadData = async () => {
       const nextFilledSections = parseJson(
         localStorage.getItem(UQR_FILLED_SECTIONS_KEY),
         {},
@@ -325,7 +322,17 @@ const UQRFormsPreview = ({ mode = "forms" }) => {
           ? nextFilledSections
           : {};
 
-      setFormEntries(loadFactorySavedEntries());
+      let ipoList = [];
+      try {
+        const response = await getIPOs();
+        const rawItems = response?.results || response?.data || response || [];
+        ipoList = Array.isArray(rawItems) ? rawItems : [];
+      } catch (error) {
+        console.warn("Failed to load IPOs from API:", error);
+        ipoList = [];
+      }
+
+      setFormEntries(loadFactorySavedEntries(ipoList));
       setDatabaseEntries(loadSavedDatabaseEntries(normalizedFilledSections));
       setFilledSections(normalizedFilledSections);
     };

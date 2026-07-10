@@ -47,7 +47,7 @@ const Step0 = ({
     }
   }, [parentIsSaved]);
 
-  // Load buyer codes from API (fallback to localStorage)
+  // Load buyer codes from the database (API only — no localStorage).
   useEffect(() => {
     const loadBuyerCodes = async () => {
       try {
@@ -56,15 +56,8 @@ const Step0 = ({
         const codes = Array.isArray(buyers) ? buyers.map(b => b.code) : [];
         setBuyerCodeOptions(codes);
       } catch (error) {
-        console.warn('Failed to load buyer codes from API, using localStorage:', error);
-        try {
-          const buyerCodes = JSON.parse(localStorage.getItem('buyerCodes') || '[]');
-          const codes = buyerCodes.map(buyer => buyer.code);
-          setBuyerCodeOptions(codes);
-        } catch (e) {
-          console.error('Error loading buyer codes:', e);
-          setBuyerCodeOptions([]);
-        }
+        console.error('Failed to load buyer codes:', error);
+        setBuyerCodeOptions([]);
       }
     };
     loadBuyerCodes();

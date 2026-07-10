@@ -51,11 +51,9 @@ const CompanyEssentials = ({ onBack }) => {
           timestamp: item.created_at || '',
         })) : [];
         setExistingEssentials(mapped);
-        localStorage.setItem('companyEssentials', JSON.stringify(mapped));
       } catch (error) {
-        console.warn('Failed to load essentials from API, using localStorage:', error);
-        const stored = JSON.parse(localStorage.getItem('companyEssentials') || '[]');
-        setExistingEssentials(stored);
+        console.warn('Failed to load essentials from API:', error);
+        setExistingEssentials([]);
       }
     };
     loadEssentials();
@@ -106,7 +104,7 @@ const CompanyEssentials = ({ onBack }) => {
   const getNextPONumber = (category) => {
     if (!category) return 1;
     try {
-      const existingData = JSON.parse(localStorage.getItem('companyEssentials') || '[]');
+      const existingData = existingEssentials;
       const categoryEntries = existingData.filter(entry => entry.category === category);
       if (categoryEntries.length === 0) return 1;
       
@@ -316,10 +314,7 @@ const CompanyEssentials = ({ onBack }) => {
         });
       }
 
-      const existingData = JSON.parse(localStorage.getItem('companyEssentials') || '[]');
-      const merged = [...existingData, ...savedItems];
-      localStorage.setItem('companyEssentials', JSON.stringify(merged));
-      setExistingEssentials(merged);
+      setExistingEssentials((prev) => [...prev, ...savedItems]);
 
       setSaveStatus('success');
       setIsSaved(true);

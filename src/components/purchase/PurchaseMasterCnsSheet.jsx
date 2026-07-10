@@ -6,12 +6,13 @@ import {
   getJobWorkGrid,
   previewJobWorkVpo,
   issueJobWorkVpo,
+  getVendorCodes,
 } from '../../services/integration';
+import { printVpo } from './vpo';
 import { CATEGORY_CHIPS, TOP_TABS } from './columnSchemas';
 import PurchaseGrid from './PurchaseGrid';
 import JobWorkGrid from './JobWorkGrid';
-import VpoPreviewModal from './VpoPreviewModal';
-import JobWorkVpoPreviewModal from './JobWorkVpoPreviewModal';
+import { VpoPreviewModal, JobWorkVpoPreviewModal } from './vpo';
 import StockUqrPanel from './StockUqrPanel';
 
 // Shared Tailwind class strings — flat/clean theme matching the StockSheet revamp.
@@ -66,6 +67,8 @@ const PurchaseMasterCnsSheet = ({ ipo, onBack, onOpenVpoHistory }) => {
   const [previewErrors, setPreviewErrors] = useState(null);
   const [issuing, setIssuing] = useState(false);
   const [stockPanelRow, setStockPanelRow] = useState(null);
+  const [vendors, setVendors] = useState([]);
+  const [lastIssuedVpo, setLastIssuedVpo] = useState(null);
 
   // Job Work tab state (separate payload shape: { materials, work_orders }).
   const [jobWork, setJobWork] = useState({ materials: [], work_orders: [] });
@@ -148,6 +151,22 @@ const PurchaseMasterCnsSheet = ({ ipo, onBack, onOpenVpoHistory }) => {
     loadGrid();
   }, [loadGrid]);
 
+  // Vendors for the "Generate VPO" vendor dropdown (printable Purchase Order).
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await getVendorCodes();
+        if (cancelled) return;
+        const list = Array.isArray(res) ? res : (res?.results || []);
+        setVendors(list);
+      } catch {
+        /* vendor list is optional — leave empty */
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
   const selectedRows = useMemo(
     () => grid.rows.filter((r) => selected[r.id]),
     [grid.rows, selected]
@@ -199,17 +218,28 @@ const PurchaseMasterCnsSheet = ({ ipo, onBack, onOpenVpoHistory }) => {
     }
   };
 
-  const handleIssueVpo = async () => {
-    if (!preview || !preview.lines?.length) return;
+  // issueData comes from the VpoPreviewModal:
+  // { vendor_id, payment_terms, delivery_due_date, remarks, lines:[{...,rate,remark}] }
+  const handleIssueVpo = async (issueData) => {
+    const previewLines = preview?.lines || [];
+    if (!previewLines.length) return;
     setIssuing(true);
     try {
-      const lines = preview.lines.map((l) => ({
+      const lines = (issueData?.lines || previewLines).map((l) => ({
         source_type: l.source_type,
         source_id: l.source_id,
         qty: Number(l.qty),
         unit: l.unit,
+        rate: l.rate,
+        remark: l.remark,
       }));
-      const res = await issueVpo(ipoId, lines);
+      const res = await issueVpo(ipoId, {
+        lines,
+        vendor_id: issueData?.vendor_id,
+        payment_terms: issueData?.payment_terms,
+        delivery_due_date: issueData?.delivery_due_date,
+        remarks: issueData?.remarks,
+      });
       if (res?.errors) {
         setPreviewErrors(res.errors);
       } else {
@@ -218,6 +248,11 @@ const PurchaseMasterCnsSheet = ({ ipo, onBack, onOpenVpoHistory }) => {
         setSelected({});
         gridCache.current = {}; // balances changed — drop cache and refetch fresh
         loadGrid({ force: true });
+        // Offer to print the just-issued Purchase Order.
+        if (res?.vpo) {
+          setLastIssuedVpo(res.vpo);
+          printVpo(res.vpo);
+        }
       }
     } catch (err) {
       setPreviewErrors([err?.message || 'Failed to issue VPO.']);
@@ -371,6 +406,16 @@ const PurchaseMasterCnsSheet = ({ ipo, onBack, onOpenVpoHistory }) => {
                   >
                     Generate VPO
                   </button>
+                  {lastIssuedVpo && (
+                    <button
+                      type="button"
+                      className={OUTLINE_BTN}
+                      onClick={() => printVpo(lastIssuedVpo)}
+                      title={`Reprint ${lastIssuedVpo.vpo_number || 'VPO'}`}
+                    >
+                      Print {lastIssuedVpo.vpo_number || 'VPO'}
+                    </button>
+                  )}
                 </>
               )}
             </div>
@@ -420,6 +465,7 @@ const PurchaseMasterCnsSheet = ({ ipo, onBack, onOpenVpoHistory }) => {
         preview={preview}
         errors={previewErrors}
         busy={issuing}
+        vendors={vendors}
         onClose={() => {
           setPreviewOpen(false);
           setPreview(null);

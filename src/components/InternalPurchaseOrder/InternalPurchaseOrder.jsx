@@ -69,7 +69,6 @@ const InternalPurchaseOrder = ({ onBack, onNavigateToCodeCreation, onNavigateToI
     const response = await getIPOs();
     const ipos = response.results || response.data || response || [];
     const mapped = Array.isArray(ipos) ? ipos.map(mapIpoResponseItem) : [];
-    localStorage.setItem('internalPurchaseOrders', JSON.stringify(mapped));
     window.dispatchEvent(new Event('internalPurchaseOrdersUpdated'));
     return mapped;
   };
@@ -112,15 +111,8 @@ const InternalPurchaseOrder = ({ onBack, onNavigateToCodeCreation, onNavigateToI
         const codes = Array.isArray(buyers) ? buyers.map(b => b.code) : [];
         setBuyerCodeOptions(codes);
       } catch (error) {
-        console.warn('Failed to load buyer codes from API, using localStorage:', error);
-        try {
-          const buyerCodes = JSON.parse(localStorage.getItem('buyerCodes') || '[]');
-          const codes = buyerCodes.map(buyer => buyer.code);
-          setBuyerCodeOptions(codes);
-        } catch (e) {
-          console.error('Error loading buyer codes:', e);
-          setBuyerCodeOptions([]);
-        }
+        console.warn('Failed to load buyer codes from API:', error);
+        setBuyerCodeOptions([]);
       }
     };
     loadBuyerCodes();
@@ -164,9 +156,11 @@ const InternalPurchaseOrder = ({ onBack, onNavigateToCodeCreation, onNavigateToI
   };
 
   // Get next IPO sequential number - increment per Order Type + Buyer/Type + Program
-  const getNextIPOSrNo = (data) => {
+  const getNextIPOSrNo = async (data) => {
     try {
-      const existingIPOs = JSON.parse(localStorage.getItem('internalPurchaseOrders') || '[]');
+      const response = await getIPOs();
+      const ipos = response.results || response.data || response || [];
+      const existingIPOs = Array.isArray(ipos) ? ipos.map(mapIpoResponseItem) : [];
       const dataOrderType = normalizeOrderType(data.orderType);
       const sameGroupIPOs = existingIPOs.filter((ipo) => {
         if (normalizeKey(normalizeOrderType(ipo.orderType)) !== normalizeKey(dataOrderType)) return false;
