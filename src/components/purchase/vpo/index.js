@@ -5,4 +5,4 @@
 export { default as VpoPreviewModal } from './VpoPreviewModal';
 export { default as JobWorkVpoPreviewModal } from './JobWorkVpoPreviewModal';
 export { default as VpoHistory } from './VpoHistory';
-export { printVpo, buildVpoHtml } from './vpoPrint';
+export { printVpo, downloadVpoPdf, buildVpoHtml } from './vpoPrint';

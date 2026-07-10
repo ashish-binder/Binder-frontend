@@ -13,6 +13,13 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src'),
     },
   },
+  // These are only reached through a dynamic import() (the VPO "Download PDF" flow).
+  // Without pre-bundling them, the first click triggers an on-the-fly dep optimisation
+  // that reloads the page and aborts the in-flight import ("Failed to fetch dynamically
+  // imported module").
+  optimizeDeps: {
+    include: ['html2canvas', 'jspdf'],
+  },
   server: {
     host: '0.0.0.0',
     port: 5173,
