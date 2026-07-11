@@ -61,6 +61,32 @@ const CELL_BASE = {
   verticalAlign: 'top',
 };
 
+// Keep the saving spinner on screen for at least this long so a fast
+// (localhost) save is still visually perceptible instead of flashing by.
+const MIN_SPINNER_MS = 650;
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// Tiny inline "saving…" spinner shown beside a field while its autosave is in
+// flight. Appears the moment the user commits an edit (blur / Enter) and
+// disappears once the save resolves. Keyframes are injected once by the grid.
+const Spinner = ({ size = 13 }) => (
+  <span
+    role="status"
+    aria-label="Saving"
+    title="Saving…"
+    style={{
+      display: 'inline-block',
+      width: size,
+      height: size,
+      border: '2px solid #d1d5db',
+      borderTopColor: '#2563eb',
+      borderRadius: '50%',
+      animation: 'pgCellSpin 0.6s linear infinite',
+      flexShrink: 0,
+    }}
+  />
+);
+
 const fmtNum = (v) => {
   if (v === null || v === undefined || v === '') return '';
   const n = Number(v);
@@ -105,7 +131,18 @@ const PurchaseGrid = ({
   const handleSaveRate = async (row) => {
     const value = rateDraft[row.id];
     if (value === undefined) return;
+    // No change since the last saved value — drop the draft and skip the save
+    // (autosave fires on every blur, so this keeps unchanged blurs a no-op).
+    if (String(value) === String(row.rate ?? '')) {
+      setRateDraft((p) => {
+        const next = { ...p };
+        delete next[row.id];
+        return next;
+      });
+      return;
+    }
     setRateSaving((p) => ({ ...p, [row.id]: true }));
+    const startedAt = Date.now();
     try {
       await patchPurchaseLineItem(row.source_type, row.source_id, { rate: value });
       onLineItemUpdated?.(row, { rate: value });
@@ -117,6 +154,8 @@ const PurchaseGrid = ({
     } catch (err) {
       console.error('Failed to save rate', err);
     } finally {
+      const elapsed = Date.now() - startedAt;
+      if (elapsed < MIN_SPINNER_MS) await sleep(MIN_SPINNER_MS - elapsed);
       setRateSaving((p) => {
         const next = { ...p };
         delete next[row.id];
@@ -204,12 +243,15 @@ const PurchaseGrid = ({
       return;
     }
     setSaving((p) => ({ ...p, [key]: true }));
+    const startedAt = Date.now();
     try {
       await patchPurchaseLineItem(row.source_type, row.source_id, { [field]: newValue });
       onLineItemUpdated?.(row, { [field]: newValue });
     } catch (err) {
       console.error('Failed to update line item', err);
     } finally {
+      const elapsed = Date.now() - startedAt;
+      if (elapsed < MIN_SPINNER_MS) await sleep(MIN_SPINNER_MS - elapsed);
       setSaving((p) => {
         const next = { ...p };
         delete next[key];
@@ -233,6 +275,7 @@ const PurchaseGrid = ({
         maxHeight: '70vh',
       }}
     >
+      <style>{'@keyframes pgCellSpin { to { transform: rotate(360deg); } }'}</style>
       <table style={{ borderCollapse: 'collapse', width: 'max-content', minWidth: '100%' }}>
         <thead>
           <tr>
@@ -404,9 +447,11 @@ const PurchaseGrid = ({
                     );
                   }
 
-                  // Rate (INR)/Unit — manual number input with a Save button
-                  // that appears once a value is entered/changed and hides
-                  // again once saved to the database.
+                  // Rate (INR)/Unit — manual number input that autosaves the
+                  // moment the user leaves the field (blur) or presses Enter, AND
+                  // offers an explicit Save button while the value is unsaved. A
+                  // tiny spinner shows beside it while the save is in flight and
+                  // disappears once it resolves.
                   if (col.key === 'rate') {
                     const savedRate = row.rate ?? '';
                     const draft = rateDraft[row.id];
@@ -426,9 +471,11 @@ const PurchaseGrid = ({
                             min="0"
                             value={current}
                             placeholder="—"
+                            disabled={savingRate}
                             onChange={(e) => setRateDraft((p) => ({ ...p, [row.id]: e.target.value }))}
+                            onBlur={() => handleSaveRate(row)}
                             onKeyDown={(e) => {
-                              if (e.key === 'Enter' && showSave && !savingRate) handleSaveRate(row);
+                              if (e.key === 'Enter') e.target.blur();
                             }}
                             style={{
                               border: '1px solid #d1d5db',
@@ -439,17 +486,22 @@ const PurchaseGrid = ({
                               textAlign: 'right',
                             }}
                           />
-                          {showSave && (
+                          {savingRate ? (
+                            <Spinner />
+                          ) : showSave ? (
                             <Button
                               type="button"
                               variant="default"
                               size="sm"
-                              disabled={savingRate}
+                              // preventDefault on mousedown keeps focus in the
+                              // input so the click (not the blur-autosave) drives
+                              // the save — avoids the button unmounting mid-click.
+                              onMouseDown={(e) => e.preventDefault()}
                               onClick={() => handleSaveRate(row)}
                             >
-                              {savingRate ? '…' : 'Save'}
+                              Save
                             </Button>
-                          )}
+                          ) : null}
                         </div>
                       </td>
                     );
@@ -466,29 +518,33 @@ const PurchaseGrid = ({
                         style={{ ...CELL_BASE, width: col.width, textAlign: col.align || 'left' }}
                       >
                         {isEditing ? (
-                          <input
-                            autoFocus
-                            value={editing[editKey] ?? ''}
-                            onChange={(e) => handleEditChange(row, col.key, e.target.value)}
-                            onBlur={() => handleEditCommit(row, col.key)}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') e.target.blur();
-                              if (e.key === 'Escape') {
-                                setEditing((p) => {
-                                  const next = { ...p };
-                                  delete next[editKey];
-                                  return next;
-                                });
-                              }
-                            }}
-                            style={{
-                              border: '1px solid #d1d5db',
-                              borderRadius: 4,
-                              padding: '2px 6px',
-                              width: '100%',
-                              fontSize: 12,
-                            }}
-                          />
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <input
+                              autoFocus
+                              disabled={isSaving}
+                              value={editing[editKey] ?? ''}
+                              onChange={(e) => handleEditChange(row, col.key, e.target.value)}
+                              onBlur={() => handleEditCommit(row, col.key)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') e.target.blur();
+                                if (e.key === 'Escape') {
+                                  setEditing((p) => {
+                                    const next = { ...p };
+                                    delete next[editKey];
+                                    return next;
+                                  });
+                                }
+                              }}
+                              style={{
+                                border: '1px solid #d1d5db',
+                                borderRadius: 4,
+                                padding: '2px 6px',
+                                width: '100%',
+                                fontSize: 12,
+                              }}
+                            />
+                            {isSaving && <Spinner />}
+                          </div>
                         ) : (
                           <button
                             type="button"
