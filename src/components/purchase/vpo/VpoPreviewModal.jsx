@@ -95,7 +95,10 @@ const VpoPreviewModal = ({
   const [raisedByUsername, setRaisedByUsername] = useState("");
   const [remarks, setRemarks] = useState("");
 
-  // Editable per-line rate/remark, keyed by index. Seeded from the preview.
+
+  // Editable per-line qty/rate/remark, keyed by index. Seeded from the preview.
+  const [qtys, setQtys] = useState({});
+
   const [rates, setRates] = useState({});
   const [lineRemarks, setLineRemarks] = useState({});
 
@@ -104,12 +107,17 @@ const VpoPreviewModal = ({
 
   useEffect(() => {
     if (!open) return;
+    const seededQtys = {};
     const seededRates = {};
     const seededRemarks = {};
     previewLines.forEach((l, i) => {
+
+      seededQtys[i] = l.qty ?? "";
+
       seededRates[i] = l.rate ?? "";
       seededRemarks[i] = l.remark ?? "";
     });
+    setQtys(seededQtys);
     setRates(seededRates);
     setLineRemarks(seededRemarks);
     setVpoDate(todayIso());
@@ -135,6 +143,23 @@ const VpoPreviewModal = ({
     setVendorEmail(selectedVendor.email || "");
     setPaymentTerms((prev) => prev || selectedVendor.payment_terms || "");
   }, [selectedVendor]);
+
+  // The edited qty for a line (falls back to the preview qty until seeded).
+//   const qtyOf = (l, i) => (qtys[i] === undefined ? num(l.qty) : num(qtys[i]));
+
+//   const totalQty = useMemo(
+//     () => previewLines.reduce((s, l, i) => s + qtyOf(l, i), 0),
+//     [previewLines, qtys],
+//   );
+//   const totalAmount = useMemo(
+//     () => previewLines.reduce((s, l, i) => s + num(rates[i]) * qtyOf(l, i), 0),
+//     [previewLines, rates, qtys],
+//   );
+
+//   if (!open) return null;
+
+//   const ipoCode = preview?.ipo?.ipo_code || "";
+
 
   const totalQty = useMemo(
     () => previewLines.reduce((s, l) => s + num(l.qty), 0),
@@ -240,6 +265,11 @@ const VpoPreviewModal = ({
             <div className="mt-0.5 text-xs text-muted-foreground">
               IPO {ipoCode} — {previewLines.length} line(s)
             </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <button type="button" className={OUTLINE_BTN} onClick={onClose}>
+              Close
+            </button>
           </div>
           <div className="flex items-center gap-2">
             <button type="button" className={OUTLINE_BTN} onClick={onClose}>

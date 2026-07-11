@@ -24,6 +24,7 @@ export const initializeRawMaterials = (formData) => {
         yarnCountRange: '',
         yarnDoublingOptions: '',
         yarnPlyOptions: '',
+        yarnColour: '',
         surplus: '',
         approval: [],
         remarks: '',

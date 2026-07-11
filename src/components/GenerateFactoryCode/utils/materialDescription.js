@@ -90,6 +90,7 @@ const YARN_TAIL_FIELDS = [
   { key: 'yarnComposition', format: composition },
   { key: 'yarnType' },
   { key: 'windingOptions' },
+  { key: 'yarnColour' },
 ];
 
 // ---- Trim & Accessory --------------------------------------------------------
@@ -807,6 +808,48 @@ export const getPackagingDescriptionSourceFields = (packagingType) => {
     }
   });
   return keys;
+};
+
+// ---- Syntax templates (shown as the empty-field placeholder) -----------------
+// While the spec fields are still empty, the read-only MATERIAL DESC field shows
+// the expected token order so the user sees the structure they're building. As
+// soon as any field is filled, the generated value replaces this.
+const FABRIC_SYNTAX = 'Fabric Name/Composition/GSM/Construction Type/Weave-Knit Type';
+const YARN_SYNTAX = 'Doubling/Count×Ply/Composition/Yarn Type/Winding/Colour';
+const FOAM_SYNTAX = 'Foam Type/Subtype/VA Content/Colour/Thickness/Sheet-Pcs/GSM/LxW';
+const FIBER_SYNTAX = 'Fiber Type/Subtype/Form/Denier/Siliconized/Conjugate-Crimp/Colour';
+
+/** Placeholder syntax for a raw-material / trim row (by materialType + trimAccessory). */
+export const getMaterialDescriptionSyntax = (material) => {
+  if (!material) return '';
+  const type = material.materialType;
+  if (type === 'Fabric') return FABRIC_SYNTAX;
+  if (type === 'Yarn') return material.subMaterial === 'Stitching Thread' ? '' : YARN_SYNTAX;
+  if (type === 'Foam') return FOAM_SYNTAX;
+  if (type === 'Fiber') return FIBER_SYNTAX;
+  if (type === 'Trim & Accessory') {
+    const defs = TRIM_FIELD_MAP[material.trimAccessory];
+    if (!defs) return '';
+    const label = TRIM_CATEGORY_LABEL[material.trimAccessory] || material.trimAccessory;
+    return [label, ...defs.map((d) => d.token || 'Size')].join(SEP);
+  }
+  return '';
+};
+
+/** Placeholder syntax for an artwork row (by artworkCategory). */
+export const getArtworkDescriptionSyntax = (category) => {
+  const defs = ARTWORK_FIELD_MAP[category];
+  if (!defs) return '';
+  const label = ARTWORK_CATEGORY_LABEL[category] || category;
+  return [label, ...defs.map((d) => d.literal || d.token || 'Size')].join(SEP);
+};
+
+/** Placeholder syntax for a packaging row (by packagingMaterialType). */
+export const getPackagingDescriptionSyntax = (packagingType) => {
+  const defs = PACKAGING_FIELD_MAP[packagingType];
+  if (!defs) return '';
+  const label = PACKAGING_CATEGORY_LABEL[packagingType] || packagingType;
+  return [label, ...defs.map((d) => d.token || 'Dimensions')].join(SEP);
 };
 
 /** Material types whose description is auto-generated (vs. manually typed). */

@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { FormCard } from '@/components/ui/form-layout';
-import { getIPOMasterCNS, saveIPOMasterCNSRows, getFactoryCodeDraft, shareIpoToPurchase } from '../../services/integration';
+import { getIPOMasterCNS, saveIPOMasterCNSRows, getFactoryCodeDraft, shareIpoToPurchase, getStockLookup, requestUqr } from '../../services/integration';
 import { useLoading } from '../../context/LoadingContext';
 
 // Excel-style frozen pane: top header row sticks to top; the leftmost columns
@@ -721,6 +721,29 @@ const TABS = [
   { key: 'packaging', label: 'Packaging' },
 ];
 
+// Maps a Raw-Material subtab to the backend StockSheet.category value used by
+// the Check Stock lookup (GET ims/stock/?category=...).
+const SUBTAB_STOCK_CATEGORY = {
+  fabric: 'FABRIC',
+  fiber: 'FIBER',
+  foam: 'FOAM',
+  trim: 'TRIMS_ACCESSORY',
+  yarn: 'YARN',
+};
+
+// Filter stock lookup rows down to the target material description(s). Check
+// Stock matches on Material Description only (regardless of Purchase Width), so a
+// club of rows sharing a description surfaces every available width for it.
+const filterStockByDescriptions = (results, descriptions) => {
+  if (!Array.isArray(results)) return [];
+  if (!descriptions || descriptions.length <= 1) return results;
+  const wanted = descriptions.map((d) => String(d).toLowerCase());
+  return results.filter((row) => {
+    const md = String(row.material_description || '').toLowerCase();
+    return wanted.some((w) => w && (md.includes(w) || w.includes(md)));
+  });
+};
+
 const RAW_SUBTABS = [
   { key: 'fabric', label: 'Fabric', matches: (t) => /fabric/i.test(t) },
   { key: 'fiber', label: 'Fiber', matches: (t) => /fiber|fibre/i.test(t) },
@@ -755,10 +778,35 @@ const grossWidthPc = (row) => {
   if (!Number.isFinite(n)) return NaN;
   return n * (1 + (Number.isFinite(w) ? w : 0) / 100);
 };
+// Fabric Net Length/Width may be typed on the Master CNS sheet when the Derived
+// CNS has no cutting size ("editable only when empty"). Effective net = derived
+// value if present, else the manual input in manualInputs[row.id].
+const effectiveFabricNetLength = (row, ctx) => {
+  const derived = toNum(row.net_length_cns_pc);
+  if (Number.isFinite(derived)) return derived;
+  return toNum(ctx?.manualInputs?.[row.id]?.net_length_cns_pc);
+};
+const effectiveFabricNetWidth = (row, ctx) => {
+  const derived = toNum(row.net_width_cns_pc);
+  if (Number.isFinite(derived)) return derived;
+  return toNum(ctx?.manualInputs?.[row.id]?.net_width_cns_pc);
+};
+const fabricGrossLengthPc = (row, ctx) => {
+  const n = effectiveFabricNetLength(row, ctx);
+  if (!Number.isFinite(n)) return NaN;
+  const w = toNum(row.gross_wastage_length);
+  return n * (1 + (Number.isFinite(w) ? w : 0) / 100);
+};
+const fabricGrossWidthPc = (row, ctx) => {
+  const n = effectiveFabricNetWidth(row, ctx);
+  if (!Number.isFinite(n)) return NaN;
+  const w = toNum(row.gross_wastage_width);
+  return n * (1 + (Number.isFinite(w) ? w : 0) / 100);
+};
 const fabricGrossWidthCns = (row, ctx) => {
-  if (!ctx?.isClub) return grossWidthPc(row);
+  if (!ctx?.isClub) return fabricGrossWidthPc(row, ctx);
   return ctx.clubRows.reduce((acc, r) => {
-    const v = grossWidthPc(r);
+    const v = fabricGrossWidthPc(r, ctx);
     return acc + (Number.isFinite(v) ? v : 0);
   }, 0);
 };
@@ -869,6 +917,88 @@ const ManualNumberCell = ({ rowId, field, ctx, invalid }) => {
   );
 };
 
+// Small "(i)" info button rendered next to a column header. Shows the column's
+// `info` note (e.g. base-unit conversion guidance) on hover/click.
+const HeaderInfo = ({ text }) => {
+  const [open, setOpen] = useState(false);
+  return (
+    <span style={{ position: 'relative', display: 'inline-block', marginLeft: 4, verticalAlign: 'middle' }}>
+      <button
+        type="button"
+        onClick={(e) => { e.stopPropagation(); setOpen((o) => !o); }}
+        onMouseEnter={() => setOpen(true)}
+        onMouseLeave={() => setOpen(false)}
+        aria-label="More info"
+        title={text}
+        style={{
+          width: 15,
+          height: 15,
+          borderRadius: '50%',
+          border: '1px solid #64748b',
+          background: '#ffffff',
+          color: '#334155',
+          fontSize: 10,
+          fontWeight: 700,
+          lineHeight: '13px',
+          fontStyle: 'italic',
+          cursor: 'pointer',
+          padding: 0,
+        }}
+      >
+        i
+      </button>
+      {open && (
+        <span
+          style={{
+            position: 'absolute',
+            top: '135%',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            zIndex: 60,
+            width: 220,
+            background: '#0f172a',
+            color: '#f8fafc',
+            fontSize: 11,
+            fontWeight: 400,
+            lineHeight: 1.45,
+            textAlign: 'left',
+            padding: '8px 10px',
+            borderRadius: 6,
+            boxShadow: '0 6px 18px rgba(0,0,0,0.25)',
+            whiteSpace: 'normal',
+          }}
+        >
+          {text}
+        </span>
+      )}
+    </span>
+  );
+};
+
+// Free-text manual cell (e.g. Fabric "Remarks / Status"). Stored in the same
+// manualInputs map as numeric manual cells, keyed by rowId + field.
+const ManualTextCell = ({ rowId, field, ctx, placeholder }) => {
+  const value = ctx?.manualInputs?.[rowId]?.[field] ?? '';
+  return (
+    <input
+      type="text"
+      value={value}
+      placeholder={placeholder || ''}
+      onChange={(e) => ctx?.setManualInput?.(rowId, field, e.target.value)}
+      style={{
+        width: 160,
+        padding: '4px 6px',
+        fontSize: 13,
+        border: '1px solid #d1d5db',
+        borderRadius: 4,
+        background: '#ffffff',
+        textAlign: 'left',
+        outline: 'none',
+      }}
+    />
+  );
+};
+
 // When a "purchase_*" manual-input column is clubbed, show the sum of inputs across
 // the club (in the summary row); otherwise show the editable per-row input cell.
 const renderManualPurchase = (field) => (r, ctx) => {
@@ -893,26 +1023,49 @@ const renderSumComputed = (computeOne, decimals = 2) => (r, ctx) => {
   return formatNumber(value, { decimals });
 };
 
+// FABRIC columns — updated to match the IPC MASTER CNS spec (Fabric sheet).
+// Order & set mirror the spec exactly. IPC# and Club/Single stay as row grouping
+// (rendered by the table shell), so they are NOT columns here.
+//   Material Description → Component → Overage QTY
+//   → Net Length CNS/PC → Gross Length Wastage % → Gross Length CNS/PC
+//   → Net Width CNS/PC  → Gross Width Wastage %  → Gross Width CNS/PC
+//   → Purchase Width → Unit → Gross Purchase QTY (Unit) → Remarks / Status
+// Gross Width CNS is still computed via fabricGrossWidthCns() for the Purchase
+// Width validation/clubbing, but is no longer shown as its own column.
 const FABRIC_COLUMNS = [
   { key: 'material_description', header: 'Material Description', align: 'left',
     render: (r) => r.material_description || '-' },
+  { key: 'component', header: 'Component', align: 'left',
+    render: (r) => r.component || '-' },
   { key: 'overage_qty', header: 'Overage QTY', align: 'right',
     render: (r) => formatNumber(r.overage_qty ?? r.overage_qty_pcs, { decimals: 2 }) },
+  // Net Length/Width are editable ONLY when the Derived CNS has no value; a
+  // derived value renders read-only. The manual entry flows into Gross Length/
+  // Width below and carries forward to the Purchase section on Save.
   { key: 'net_length_cns_pc', header: 'Net Length CNS/PC', align: 'right',
-    render: (r) => formatNumber(r.net_length_cns_pc) },
-  { key: 'net_width_cns_pc', header: 'Net Width CNS/PC', align: 'right',
-    render: (r) => formatNumber(r.net_width_cns_pc) },
-  { key: 'gross_wastage_length', header: 'Gross Wastage Length', align: 'right',
+    info: 'Base Unit Yardage: enter the value in MM; it is reflected in Meter. E.g. 60 CM → enter 600 MM → reflects as 0.6 Meter. Editable only when empty.',
+    render: (r, ctx) => {
+      const derived = toNum(r.net_length_cns_pc);
+      if (Number.isFinite(derived)) return formatNumber(derived);
+      if (ctx?.isClub) return formatNumber(effectiveFabricNetLength(r, ctx));
+      return <ManualNumberCell rowId={r.id} field="net_length_cns_pc" ctx={ctx} />;
+    } },
+  { key: 'gross_wastage_length', header: 'Gross Length Wastage', align: 'right',
     render: (r) => formatNumber(r.gross_wastage_length, { decimals: 2, suffix: '%' }) },
-  { key: 'gross_wastage_width', header: 'Gross Wastage Width', align: 'right',
-    render: (r) => formatNumber(r.gross_wastage_width, { decimals: 2, suffix: '%' }) },
   { key: 'gross_length_cns_pc', header: 'Gross Length CNS/PC', align: 'right',
-    render: (r) => formatNumber(grossLengthPc(r)) },
+    render: (r, ctx) => formatNumber(fabricGrossLengthPc(r, ctx)) },
+  { key: 'net_width_cns_pc', header: 'Net Width CNS/PC', align: 'right',
+    info: 'Base Unit Width: enter the value in MM; it is reflected in Meter. E.g. 660 MM → reflects as 0.66 Meter. Editable only when empty.',
+    render: (r, ctx) => {
+      const derived = toNum(r.net_width_cns_pc);
+      if (Number.isFinite(derived)) return formatNumber(derived);
+      if (ctx?.isClub) return formatNumber(effectiveFabricNetWidth(r, ctx));
+      return <ManualNumberCell rowId={r.id} field="net_width_cns_pc" ctx={ctx} />;
+    } },
+  { key: 'gross_wastage_width', header: 'Gross Width Wastage', align: 'right',
+    render: (r) => formatNumber(r.gross_wastage_width, { decimals: 2, suffix: '%' }) },
   { key: 'gross_width_cns_pc', header: 'Gross Width CNS/PC', align: 'right',
-    render: (r) => formatNumber(grossWidthPc(r)) },
-  { key: 'gross_width_cns', header: 'Gross Width CNS', align: 'right',
-    aggregatedInClub: true,
-    render: (r, ctx) => formatNumber(fabricGrossWidthCns(r, ctx)) },
+    render: (r, ctx) => formatNumber(fabricGrossWidthPc(r, ctx)) },
   { key: 'purchase_width', header: 'Purchase Width', align: 'right',
     aggregatedInClub: true,
     render: (r, ctx) => {
@@ -937,35 +1090,11 @@ const FABRIC_COLUMNS = [
     } },
   { key: 'unit', header: 'Unit', align: 'left',
     render: (r) => r.unit || '-' },
-  { key: 'gross_length_qty', header: 'Gross Length QTY', align: 'right',
+  { key: 'gross_purchase_qty', header: 'Gross Purchase QTY (Unit)', align: 'right',
     aggregatedInClub: true,
-    render: renderSumComputed((row) => {
-      const glPc = grossLengthPc(row);
-      const overage = toNum(row.overage_qty ?? row.overage_qty_pcs);
-      if (!Number.isFinite(glPc) || !Number.isFinite(overage)) return NaN;
-      return glPc * overage;
-    }) },
-  { key: 'purchase_length_qty', header: 'Purchase Length QTY', align: 'right',
-    aggregatedInClub: true,
-    render: renderManualPurchase('purchase_length_qty') },
-  { key: 'gross_width_multiple', header: 'Gross Width Multiple', align: 'right',
-    render: (r, ctx) => <ManualNumberCell rowId={r.id} field="gross_width_multiple" ctx={ctx} /> },
-  { key: 'balance_gross_width_wastage', header: 'Balance Gross Width Wastage', align: 'right',
-    aggregatedInClub: true,
-    render: (r, ctx) => {
-      const pw = fabricPurchaseWidthTotal(r, ctx);
-      const gw = fabricGrossWidthCns(r, ctx);
-      if (!Number.isFinite(pw) || !Number.isFinite(gw)) return '-';
-      return formatNumber(pw - gw, { decimals: 2 });
-    } },
-  { key: 'balance_gross_width_wastage_pct', header: 'Balance Gross Width Wastage %', align: 'right',
-    aggregatedInClub: true,
-    render: (r, ctx) => {
-      const pw = fabricPurchaseWidthTotal(r, ctx);
-      const gw = fabricGrossWidthCns(r, ctx);
-      if (!Number.isFinite(pw) || !Number.isFinite(gw) || pw === 0) return '-';
-      return formatNumber(((pw - gw) / pw) * 100, { decimals: 2, suffix: '%' });
-    } },
+    render: renderManualPurchase('gross_purchase_qty') },
+  { key: 'remarks', header: 'Remarks / Status', align: 'left',
+    render: (r, ctx) => ctx?.isClub ? null : <ManualTextCell rowId={r.id} field="remarks" ctx={ctx} placeholder="Remarks / status" /> },
 ];
 
 const TRIM_COLUMNS = [
@@ -1300,12 +1429,26 @@ const IPOMasterCNS = ({ ipo }) => {
             'gross_width_multiple',
             'purchase_qty_pcs',
             'purchase_weight_qty',
+            'gross_purchase_qty',
+            'remarks',
           ];
+          // Manual Net Length/Width overrides come back under distinct keys
+          // (net_length_manual / net_width_manual) so we only seed values the
+          // user actually typed — not the derived cutting size.
+          const seedAliases = {
+            net_length_cns_pc: 'net_length_manual',
+            net_width_cns_pc: 'net_width_manual',
+          };
           (response?.raw_material || []).forEach((r) => {
             const entry = {};
             seedFields.forEach((f) => {
               if (r[f] !== null && r[f] !== undefined) {
                 entry[f] = String(r[f]);
+              }
+            });
+            Object.entries(seedAliases).forEach(([field, srcKey]) => {
+              if (r[srcKey] !== null && r[srcKey] !== undefined) {
+                entry[field] = String(r[srcKey]);
               }
             });
             if (Object.keys(entry).length) seed[r.id] = entry;
@@ -1350,10 +1493,36 @@ const IPOMasterCNS = ({ ipo }) => {
     () => buildYarnRowsFromDerived(derivedFormData),
     [derivedFormData]
   );
-  const fabricRowsFromDerived = useMemo(
-    () => buildFabricRowsFromDerived(derivedFormData),
-    [derivedFormData]
-  );
+  // Fabric rows are derived from the Derived CNS (synthetic ids). To make Save
+  // and round-trip work, stamp each derived row's id with its persisted
+  // RawMaterial UUID (from the master-cns payload) by matching IPC + material
+  // description + component. Rows with no backend match keep their derived id
+  // (they render fine but their manual inputs won't persist).
+  const fabricRowsFromDerived = useMemo(() => {
+    const rows = buildFabricRowsFromDerived(derivedFormData);
+    const backend = (data && data.raw_material) || [];
+    if (!backend.length) return rows;
+    const used = new Set();
+    const norm = (v) => String(v || '').trim().toLowerCase();
+    const matchId = (row) => {
+      let hit = backend.find((b) => !used.has(b.id)
+        && norm(b.ipc) === norm(row.ipc)
+        && norm(b.material_description) === norm(row.material_description)
+        && norm(b.component) === norm(row.component));
+      if (!hit) {
+        hit = backend.find((b) => !used.has(b.id)
+          && norm(b.ipc) === norm(row.ipc)
+          && norm(b.material_description) === norm(row.material_description));
+      }
+      return hit ? hit.id : null;
+    };
+    return rows.map((row) => {
+      const backendId = matchId(row);
+      if (!backendId) return row;
+      used.add(backendId);
+      return { ...row, id: backendId, derivedId: row.id };
+    });
+  }, [derivedFormData, data]);
   const fiberRowsFromDerived = useMemo(
     () => buildFiberRowsFromDerived(derivedFormData),
     [derivedFormData]
@@ -1629,10 +1798,23 @@ const IPOMasterCNS = ({ ipo }) => {
 
   const [savingKey, setSavingKey] = useState(null);
   const [saveError, setSaveError] = useState('');
+  const [savingAll, setSavingAll] = useState(false);
   // Per-row/club selection of which action the Action Button column should fire.
   // Default is 'save'; user can flip to 'send' via the dropdown arrow.
   const [actionSelections, setActionSelections] = useState({});
   const [actionMenuOpen, setActionMenuOpen] = useState(null);
+  // Check Stock popup state (live stock lookup for the current row/club).
+  const [checkStock, setCheckStock] = useState({
+    open: false,
+    loading: false,
+    error: '',
+    title: '',
+    category: '',
+    descriptions: [],
+    ipoId: null,
+    results: [],
+    requestingId: null,
+  });
 
   const buildSavePayload = (rowIds) => rowIds.map((id) => {
     const entry = manualInputs[id] || {};
@@ -1643,11 +1825,16 @@ const IPOMasterCNS = ({ ipo }) => {
       'gross_width_multiple',
       'purchase_qty_pcs',
       'purchase_weight_qty',
+      'gross_purchase_qty',
+      'remarks',
+      'net_length_cns_pc',
+      'net_width_cns_pc',
     ];
     writable.forEach((field) => {
       if (Object.prototype.hasOwnProperty.call(entry, field)) {
         const v = entry[field];
-        payload[field] = v === '' ? null : v;
+        // Remarks is free text — keep '' as-is; numeric fields send null when blank.
+        payload[field] = (field === 'remarks') ? v : (v === '' ? null : v);
       }
     });
     return payload;
@@ -1678,9 +1865,88 @@ const IPOMasterCNS = ({ ipo }) => {
     }
   };
 
+  // Top-level Save — persists every row that has manual inputs entered. Backend
+  // silently ignores ids that don't resolve to a RawMaterial row for this IPO.
+  const handleSaveAll = async () => {
+    const ipoId = ipo?.ipoId || ipo?.id;
+    if (!ipoId) return;
+    const rowIds = Object.keys(manualInputs).filter(
+      (id) => manualInputs[id] && Object.keys(manualInputs[id]).length,
+    );
+    if (!rowIds.length) return;
+    setSavingAll(true);
+    setSaveError('');
+    try {
+      await saveIPOMasterCNSRows(ipoId, buildSavePayload(rowIds));
+    } catch (e) {
+      setSaveError(e?.message || 'Failed to save.');
+    } finally {
+      setSavingAll(false);
+    }
+  };
+
   const handleSendToPurchase = (ctx) => { console.log('SEND TO PURCHASE', ctx); };
 
-  const handleCheckStock = (ctx) => { console.log('CHECK STOCK', ctx); };
+  // Resolve the row(s) behind a Check Stock click into unique material descriptions.
+  const resolveCheckStockTargets = (ctx) => {
+    let targetRows = [];
+    if (ctx?.type === 'row') {
+      const found = groupedRows.find((r) => r.id === ctx.rowId);
+      if (found) targetRows = [found];
+    } else if (ctx?.type === 'club') {
+      const club = activeClubs.find((c) => c.id === ctx.clubId);
+      if (club) targetRows = club.resolvedRows;
+    }
+    return Array.from(
+      new Set(targetRows.map((r) => r.material_description).filter(Boolean)),
+    );
+  };
+
+  const fetchStockResults = async ({ category, descriptions, ipoId }) => {
+    const primary = descriptions.length === 1 ? descriptions[0] : undefined;
+    const resp = await getStockLookup({ category, material: primary, ipo: ipoId });
+    return filterStockByDescriptions(resp?.results || [], descriptions);
+  };
+
+  const handleCheckStock = async (ctx) => {
+    const ipoId = ipo?.ipoId || ipo?.id || null;
+    const descriptions = resolveCheckStockTargets(ctx);
+    const category = SUBTAB_STOCK_CATEGORY[rawSubtab] || '';
+    setCheckStock({
+      open: true,
+      loading: true,
+      error: '',
+      title: descriptions.join(', ') || 'Stock',
+      category,
+      descriptions,
+      ipoId,
+      results: [],
+      requestingId: null,
+    });
+    try {
+      const results = await fetchStockResults({ category, descriptions, ipoId });
+      setCheckStock((prev) => ({ ...prev, loading: false, results }));
+    } catch (e) {
+      setCheckStock((prev) => ({ ...prev, loading: false, error: e?.message || 'Failed to load stock.' }));
+    }
+  };
+
+  const closeCheckStock = () => setCheckStock((prev) => ({ ...prev, open: false }));
+
+  const handleRequestUqr = async (row) => {
+    setCheckStock((prev) => ({ ...prev, requestingId: row.id, error: '' }));
+    try {
+      await requestUqr({ stockItemId: row.id, stockItemUin: row.uin || '' });
+      const results = await fetchStockResults({
+        category: checkStock.category,
+        descriptions: checkStock.descriptions,
+        ipoId: checkStock.ipoId,
+      });
+      setCheckStock((prev) => ({ ...prev, requestingId: null, results }));
+    } catch (e) {
+      setCheckStock((prev) => ({ ...prev, requestingId: null, error: e?.message || 'Failed to request UQR.' }));
+    }
+  };
 
   const actionBtnStyle = {
     background: '#16a34a',
@@ -1828,6 +2094,14 @@ const IPOMasterCNS = ({ ipo }) => {
           {shareError && (
             <span style={{ fontSize: 12, color: 'crimson' }}>{shareError}</span>
           )}
+          <Button
+            type="button"
+            variant="outline"
+            onClick={handleSaveAll}
+            disabled={savingAll}
+          >
+            {savingAll ? 'Saving…' : 'Save'}
+          </Button>
           {sharedToPurchase ? (
             <Button type="button" variant="outline" disabled>
               Shared to Purchase ✓
@@ -2050,6 +2324,7 @@ const IPOMasterCNS = ({ ipo }) => {
                     }}
                   >
                     {formatHeader(c.header)}
+                    {c.info && <HeaderInfo text={c.info} />}
                   </th>
                 ))}
                 <th style={{ ...STICKY_HEADER_STYLE, padding: '8px', textAlign: 'center', lineHeight: 1.2, verticalAlign: 'bottom', boxShadow: 'inset 0 -1px 0 #e5e7eb, inset -1px 0 0 #e5e7eb' }}>{formatHeader('Club / Single')}</th>
@@ -2378,6 +2653,178 @@ const IPOMasterCNS = ({ ipo }) => {
         </FormCard>
           </div>
         </>
+      )}
+
+      {checkStock.open && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          onMouseDown={(e) => { if (e.target === e.currentTarget) closeCheckStock(); }}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(15, 23, 42, 0.45)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000,
+            padding: 16,
+          }}
+        >
+          <div
+            style={{
+              background: '#ffffff',
+              borderRadius: 12,
+              width: 'min(920px, 96vw)',
+              maxHeight: '88vh',
+              display: 'flex',
+              flexDirection: 'column',
+              boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
+              overflow: 'hidden',
+            }}
+          >
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'flex-start',
+                justifyContent: 'space-between',
+                gap: 12,
+                padding: '16px 20px',
+                borderBottom: '1px solid #e5e7eb',
+                background: '#f8fafc',
+              }}
+            >
+              <div>
+                <div style={{ fontSize: 16, fontWeight: 700, color: '#0f172a' }}>Check Stock</div>
+                <div style={{ fontSize: 13, color: '#475569', marginTop: 2 }}>
+                  Available stock for <strong>{checkStock.title}</strong>
+                  {checkStock.category ? ` · ${checkStock.category.replace(/_/g, ' ')}` : ''}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={closeCheckStock}
+                aria-label="Close"
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  fontSize: 22,
+                  lineHeight: 1,
+                  cursor: 'pointer',
+                  color: '#64748b',
+                }}
+              >
+                ×
+              </button>
+            </div>
+
+            <div style={{ overflow: 'auto', padding: 0 }}>
+              {checkStock.error && (
+                <div style={{ padding: 12, margin: 16, background: '#fee2e2', border: '1px solid #fca5a5', borderRadius: 8, color: '#991b1b', fontSize: 13 }}>
+                  {checkStock.error}
+                </div>
+              )}
+              {checkStock.loading ? (
+                <div style={{ padding: 40, textAlign: 'center', color: '#64748b' }}>Loading stock…</div>
+              ) : checkStock.results.length === 0 && !checkStock.error ? (
+                <div style={{ padding: 40, textAlign: 'center', color: '#64748b' }}>
+                  No stock found for this material description.
+                </div>
+              ) : (
+                <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0, fontSize: 13 }}>
+                  <thead>
+                    <tr style={{ background: '#f1f5f9' }}>
+                      {['UIN Stock ID', 'Material Description', 'Available Width/Unit', 'QTY', 'Unit', 'UQR', 'Request UQR'].map((h) => (
+                        <th
+                          key={h}
+                          style={{
+                            padding: '10px 12px',
+                            textAlign: h === 'Material Description' ? 'left' : 'center',
+                            fontWeight: 700,
+                            color: '#334155',
+                            borderBottom: '1px solid #e2e8f0',
+                            whiteSpace: 'nowrap',
+                            position: 'sticky',
+                            top: 0,
+                            background: '#f1f5f9',
+                          }}
+                        >
+                          {h}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {checkStock.results.map((row) => {
+                      const isNa = (row.uqr_status || 'na') === 'na';
+                      const uqrLabel = isNa
+                        ? 'UQR# FILE-N/A'
+                        : `UQR# ${String(row.uqr_status).toUpperCase()}`;
+                      const requesting = checkStock.requestingId === row.id;
+                      return (
+                        <tr key={row.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                          <td style={{ padding: '9px 12px', textAlign: 'center', whiteSpace: 'nowrap', fontWeight: 600, color: '#0f172a' }}>
+                            {row.uin || '-'}
+                          </td>
+                          <td style={{ padding: '9px 12px', textAlign: 'left' }}>{row.material_description || '-'}</td>
+                          <td style={{ padding: '9px 12px', textAlign: 'center', whiteSpace: 'nowrap' }}>
+                            {row.available_width ? `${row.available_width}${row.unit ? ' ' + row.unit : ''}` : '-'}
+                          </td>
+                          <td style={{ padding: '9px 12px', textAlign: 'center' }}>{row.qty ?? '-'}</td>
+                          <td style={{ padding: '9px 12px', textAlign: 'center' }}>{row.unit || '-'}</td>
+                          <td style={{ padding: '9px 12px', textAlign: 'center', whiteSpace: 'nowrap' }}>
+                            <span
+                              style={{
+                                display: 'inline-block',
+                                padding: '2px 8px',
+                                borderRadius: 999,
+                                fontSize: 11,
+                                fontWeight: 700,
+                                background: isNa ? '#fef3c7' : '#dcfce7',
+                                color: isNa ? '#92400e' : '#166534',
+                              }}
+                            >
+                              {uqrLabel}
+                            </span>
+                          </td>
+                          <td style={{ padding: '9px 12px', textAlign: 'center' }}>
+                            {isNa ? (
+                              <button
+                                type="button"
+                                disabled={requesting}
+                                onClick={() => handleRequestUqr(row)}
+                                style={{
+                                  background: '#2563eb',
+                                  color: '#ffffff',
+                                  border: 'none',
+                                  borderRadius: 4,
+                                  padding: '4px 12px',
+                                  fontSize: 11,
+                                  fontWeight: 700,
+                                  cursor: requesting ? 'default' : 'pointer',
+                                  opacity: requesting ? 0.6 : 1,
+                                  whiteSpace: 'nowrap',
+                                }}
+                              >
+                                {requesting ? 'REQUESTING…' : 'REQUEST UQR'}
+                              </button>
+                            ) : (
+                              <span style={{ fontSize: 12, color: '#166534', fontWeight: 600 }}>Requested ✓</span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              )}
+            </div>
+
+            <div style={{ padding: '12px 20px', borderTop: '1px solid #e5e7eb', display: 'flex', justifyContent: 'flex-end', background: '#f8fafc' }}>
+              <Button type="button" variant="outline" onClick={closeCheckStock}>Close</Button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

@@ -4,7 +4,7 @@ import { Field } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 import SearchableDropdown from '../SearchableDropdown';
-import { isAutoDescriptionType } from '../../utils/materialDescription';
+import { isAutoDescriptionType, getMaterialDescriptionSyntax } from '../../utils/materialDescription';
 import { useMaterialOptions } from '../../utils/useMaterialOptions';
 import { UNIT_OPTIONS, UNIT_OPTIONS_WITH_PCS } from '../../constants/unitOptions';
 import TrimAccessoryFields from '../TrimAccessoryFields';
@@ -496,7 +496,7 @@ const Step2 = ({
                       readOnly
                       onClick={() => focusMaterialSpecSource(actualIndex, material.materialType, handleRawMaterialChange)}
                       title="Auto-generated from specifications — click to edit the source fields"
-                      placeholder="Fill specifications below"
+                      placeholder={getMaterialDescriptionSyntax(material) || 'Fill specifications below'}
                       className="cursor-pointer bg-muted/40"
                       aria-invalid={errors[`rawMaterial_${actualIndex}_materialDescription`] ? true : undefined}
                     />
