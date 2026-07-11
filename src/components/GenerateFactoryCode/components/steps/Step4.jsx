@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { getArtworkDescriptionSyntax } from '../../utils/materialDescription';
 import SearchableDropdown from '../SearchableDropdown';
 import { ARTWORK_APPROVAL_OPTIONS } from '../../data/approvalOptions';
 import QualityVerificationToggle from '../QualityVerificationToggle';
@@ -202,7 +203,7 @@ const Step4 = ({
                         }
                       }}
                       title="Auto-generated from specifications — click to edit the source fields"
-                      placeholder="Fill specifications below"
+                      placeholder={getArtworkDescriptionSyntax(material.artworkCategory) || 'Fill specifications below'}
                       className="border-2 rounded-lg text-sm bg-gray-100 text-gray-900 border-border cursor-pointer focus:outline-none"
                       style={{ padding: '10px 14px', height: '44px' }}
                     />

@@ -158,7 +158,21 @@ const YarnSpec = ({
                             className={errors[`rawMaterial_${actualIndex}_windingOptions`] ? 'border-red-600' : ''}
                           />
                         </Field>
-                        
+
+                        <Field label="COLOUR" required width="sm" error={errors[`rawMaterial_${actualIndex}_yarnColour`]}>
+                          <SearchableDropdown
+                            value={material.yarnColour || ''}
+                            onChange={(value) => handleRawMaterialChange(actualIndex, 'yarnColour', value)}
+                            options={mergeOptions(
+                              ['Natural', 'Raw White', 'Optical White', 'Bleached White', 'Grey (Melange)', 'Ecru', 'RFD (Ready for Dyeing)', 'Black', 'Navy', 'Red', 'Blue', 'Green', 'Brown', 'Dyed'],
+                              'Yarn', 'yarnColour'
+                            )}
+                            onCustomValue={(val) => addCustomOption('Yarn', 'yarnColour', '', val)}
+                            placeholder="Select or type Colour"
+                            className={errors[`rawMaterial_${actualIndex}_yarnColour`] ? 'border-red-600' : ''}
+                          />
+                        </Field>
+
                         <Field label="SURPLUS %" required width="sm" error={errors[`rawMaterial_${actualIndex}_surplus`]}>
                           <PercentInput
                               value={material.surplus || ''}

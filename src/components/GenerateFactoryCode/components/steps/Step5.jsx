@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { getPackagingDescriptionSyntax } from '../../utils/materialDescription';
 import { Button } from '@/components/ui/button';
 import { ChevronDown } from 'lucide-react';
 import SearchableDropdown from '../SearchableDropdown';
@@ -413,7 +414,7 @@ const Step5 = ({
                         }
                       }}
                       title="Auto-generated from specifications — click to edit the source fields"
-                      placeholder="Fill specifications below"
+                      placeholder={getPackagingDescriptionSyntax(material.packagingMaterialType) || 'Fill specifications below'}
                       className="border-2 rounded-lg text-sm bg-gray-100 text-gray-900 border-gray-200 cursor-pointer focus:outline-none"
                       style={{ padding: '10px 14px', height: '44px' }}
                     />

@@ -1917,11 +1917,65 @@ const GenerateFactoryCode = ({
   };
 
   const removeStep0Component = (skuIndex, subproductIndex, componentIndex) => {
-    updateStep0Components(skuIndex, subproductIndex, (components) =>
-      components
-        .filter((_, i) => i !== componentIndex)
-        .map((c, i) => ({ ...c, srNo: i + 1 }))
-    );
+    setStep0Saved(false);
+    // Capture the name being removed so we can purge everything keyed to it.
+    const targetEntity = subproductIndex == null
+      ? formData.skus?.[skuIndex]
+      : formData.skus?.[skuIndex]?.subproducts?.[subproductIndex];
+    // Use the EXACT stored value (no trim) — it is the same key materials store
+    // as componentName, so matching is guaranteed and we never strip the wrong one.
+    const removedName = ensureStepDataShape(targetEntity?.stepData)
+      ?.products?.[0]?.components?.[componentIndex]?.productComforter || '';
+
+    setFormData(prev => {
+      const skus = [...prev.skus];
+      const applyToEntity = (entity) => {
+        const stepData = ensureStepDataShape(entity.stepData);
+        const products = [...stepData.products];
+        const product0 = products[0] || { name: '', components: [] };
+        const nextComponents = (product0.components || [])
+          .filter((_, i) => i !== componentIndex)
+          .map((c, i) => ({ ...c, srNo: i + 1 }));
+        products[0] = { ...product0, components: nextComponents };
+        // A removed component must not leave orphaned BOM/artwork materials
+        // behind — those would block the BOM & WO "Save first" gate on a
+        // component that no longer exists in the dropdown.
+        const stripName = (arr) => (arr || []).filter((m) => m.componentName !== removedName);
+        return {
+          ...entity,
+          stepData: {
+            ...stepData,
+            products,
+            rawMaterials: removedName ? stripName(stepData.rawMaterials) : stepData.rawMaterials,
+            consumptionMaterials: removedName ? stripName(stepData.consumptionMaterials) : stepData.consumptionMaterials,
+            artworkMaterials: removedName ? stripName(stepData.artworkMaterials) : stepData.artworkMaterials,
+            rawSavedComponents: removedName
+              ? (stepData.rawSavedComponents || []).filter((n) => n !== removedName)
+              : stepData.rawSavedComponents,
+          },
+        };
+      };
+      if (subproductIndex == null) {
+        if (!skus[skuIndex]) return prev;
+        skus[skuIndex] = applyToEntity(skus[skuIndex]);
+      } else {
+        if (!skus[skuIndex]?.subproducts?.[subproductIndex]) return prev;
+        const subs = [...skus[skuIndex].subproducts];
+        subs[subproductIndex] = applyToEntity(subs[subproductIndex]);
+        skus[skuIndex] = { ...skus[skuIndex], subproducts: subs };
+      }
+      return { ...prev, skus };
+    });
+
+    // Keep the live saved-components set in sync so Next re-evaluates cleanly.
+    if (removedName) {
+      setStep2SavedComponents(prev => {
+        if (!prev.has(removedName)) return prev;
+        const next = new Set(prev);
+        next.delete(removedName);
+        return next;
+      });
+    }
   };
 
   // ---- Cut & Sew Section-1 (spec) ------------------------------------------
@@ -2020,7 +2074,7 @@ const GenerateFactoryCode = ({
           // Clear Fabric fields
           fabricFiberType: '', fabricName: '', fabricComposition: '', gsm: '', fabricSurplus: '', fabricApproval: [], fabricRemarks: '', showFabricAdvancedFilter: false, constructionType: '', weaveKnitType: '', fabricMachineType: '', fabricTestingRequirements: [], fabricFiberCategory: '', fabricOrigin: '', fabricCertifications: '',
           // Clear Yarn fields
-          fiberType: '', yarnType: '', spinningMethod: '', yarnComposition: '', yarnCountRange: '', yarnDoublingOptions: '', yarnPlyOptions: '', surplus: '', approval: [], remarks: '', showAdvancedFilter: false, spinningType: '', testingRequirements: [], fiberCategory: '', origin: '', certifications: '',
+          fiberType: '', yarnType: '', spinningMethod: '', yarnComposition: '', yarnCountRange: '', yarnDoublingOptions: '', yarnPlyOptions: '', yarnColour: '', windingOptions: '', surplus: '', approval: [], remarks: '', showAdvancedFilter: false, spinningType: '', testingRequirements: [], fiberCategory: '', origin: '', certifications: '',
           // Clear Trim & Accessory fields (all trim/accessory specific fields will be cleared)
           trimAccessory: '',
           // Clear Fiber fields
@@ -4769,12 +4823,35 @@ const GenerateFactoryCode = ({
     //   0 = BOM & WO, 1 = Artwork & Labeling, 2 = Cut & Sew Spec.
     if (flowPhase === 'ipcFlow') {
       if (currentStep === 0) {
-        // BOM & WO — every component that has raw materials must be saved
+        // BOM & WO — every component that still exists AND has raw materials
+        // must be saved. Never mutate/delete materials here (that caused data
+        // loss); deletion happens only at explicit component removal, where the
+        // name is captured from the same object. Here we only DECIDE whether to
+        // block, and we compare using the exact (untrimmed) productComforter
+        // value, which is the same key stored on each material's componentName.
         const stepData = getSelectedSkuStepData();
+
+        const selectableComponents = new Set();
+        (stepData?.products || []).forEach((product) => {
+          (product.components || []).forEach((component) => {
+            if (component?.productComforter) selectableComponents.add(component.productComforter);
+          });
+        });
+
+        // Only components that still exist count toward the save gate. Orphan
+        // materials (component was deleted) are ignored so they can't block Next.
         const componentsWithMaterials = new Set();
-        (stepData?.rawMaterials || []).forEach(m => { if (m.componentName) componentsWithMaterials.add(m.componentName); });
+        (stepData?.rawMaterials || []).forEach(m => {
+          if (m.componentName && (selectableComponents.size === 0 || selectableComponents.has(m.componentName))) {
+            componentsWithMaterials.add(m.componentName);
+          }
+        });
         const unsaved = Array.from(componentsWithMaterials).filter(c => !step2SavedComponents.has(c));
-        if (unsaved.length > 0) { setShowSaveMessage(true); setSaveMessage('Save first'); return; }
+        if (unsaved.length > 0) {
+          setShowSaveMessage(true);
+          setSaveMessage(`Save first: ${unsaved.join(', ')}`);
+          return;
+        }
         setShowSaveMessage(false);
       } else if (currentStep === 1) {
         // Artwork & Labeling
@@ -5857,7 +5934,7 @@ const GenerateFactoryCode = ({
             ) : flowPhase === 'ipcFlow' && currentStep === 0 ? (
               // BOM & WO (ipcFlow step 0): Step2 has per-component Save; nav only Prev + Next
               <div className="flex justify-end items-center gap-3" style={{ marginTop: '32px' }}>
-                {showSaveMessage && <span className="text-red-600 text-sm font-medium">Save first</span>}
+                {showSaveMessage && <span className="text-red-600 text-sm font-medium">{saveMessage || 'Save first'}</span>}
                 <Button type="button" variant="outline" onClick={handlePrevious}>← Previous</Button>
                 <Button type="button" onClick={handleNext}>Next →</Button>
               </div>

@@ -95,7 +95,8 @@ const VpoPreviewModal = ({
   const [raisedByUsername, setRaisedByUsername] = useState("");
   const [remarks, setRemarks] = useState("");
 
-  // Editable per-line rate/remark, keyed by index. Seeded from the preview.
+  // Editable per-line qty/rate/remark, keyed by index. Seeded from the preview.
+  const [qtys, setQtys] = useState({});
   const [rates, setRates] = useState({});
   const [lineRemarks, setLineRemarks] = useState({});
 
@@ -104,12 +105,15 @@ const VpoPreviewModal = ({
 
   useEffect(() => {
     if (!open) return;
+    const seededQtys = {};
     const seededRates = {};
     const seededRemarks = {};
     previewLines.forEach((l, i) => {
+      seededQtys[i] = l.qty ?? "";
       seededRates[i] = l.rate ?? "";
       seededRemarks[i] = l.remark ?? "";
     });
+    setQtys(seededQtys);
     setRates(seededRates);
     setLineRemarks(seededRemarks);
     setVpoDate(todayIso());
@@ -136,13 +140,16 @@ const VpoPreviewModal = ({
     setPaymentTerms((prev) => prev || selectedVendor.payment_terms || "");
   }, [selectedVendor]);
 
+  // The edited qty for a line (falls back to the preview qty until seeded).
+  const qtyOf = (l, i) => (qtys[i] === undefined ? num(l.qty) : num(qtys[i]));
+
   const totalQty = useMemo(
-    () => previewLines.reduce((s, l) => s + num(l.qty), 0),
-    [previewLines],
+    () => previewLines.reduce((s, l, i) => s + qtyOf(l, i), 0),
+    [previewLines, qtys],
   );
   const totalAmount = useMemo(
-    () => previewLines.reduce((s, l, i) => s + num(rates[i]) * num(l.qty), 0),
-    [previewLines, rates],
+    () => previewLines.reduce((s, l, i) => s + num(rates[i]) * qtyOf(l, i), 0),
+    [previewLines, rates, qtys],
   );
 
   if (!open) return null;
@@ -154,10 +161,10 @@ const VpoPreviewModal = ({
       source_type: l.source_type,
       source_id: l.source_id,
       material_description: l.material_description,
-      qty: l.qty,
+      qty: qtys[i] === "" || qtys[i] === undefined ? l.qty : qtys[i],
       unit: l.unit,
       rate: rates[i] === "" || rates[i] === undefined ? undefined : rates[i],
-      amount: num(rates[i]) * num(l.qty),
+      amount: num(rates[i]) * qtyOf(l, i),
       remark: lineRemarks[i] || "",
     }));
 
@@ -483,7 +490,19 @@ const VpoPreviewModal = ({
                           </div>
                         )}
                       </td>
-                      <td className={`${TD} text-right`}>{l.qty}</td>
+                      <td className={TD}>
+                        <input
+                          type="number"
+                          step="any"
+                          min="0"
+                          value={qtys[i] ?? ""}
+                          placeholder={l.qty ?? "—"}
+                          onChange={(e) =>
+                            setQtys((p) => ({ ...p, [i]: e.target.value }))
+                          }
+                          className={`${INPUT} text-right`}
+                        />
+                      </td>
                       <td className={`${TD} text-center`}>{l.unit}</td>
                       <td className={TD}>
                         <input
@@ -499,7 +518,7 @@ const VpoPreviewModal = ({
                         />
                       </td>
                       <td className={`${TD} text-right font-medium`}>
-                        {money(num(rates[i]) * num(l.qty))}
+                        {money(num(rates[i]) * qtyOf(l, i))}
                       </td>
                       <td className={TD}>
                         <input
