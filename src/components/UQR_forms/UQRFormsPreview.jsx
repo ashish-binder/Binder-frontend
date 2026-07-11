@@ -301,7 +301,7 @@ const loadSavedDatabaseEntries = (filledSections = {}) => {
   return sortEntries(Array.from(entryMap.values()));
 };
 
-const UQRFormsPreview = ({ mode = "forms" }) => {
+const UQRFormsPreview = ({ mode = "forms", onBack }) => {
   const isDatabaseMode = mode === "database";
   const [formEntries, setFormEntries] = useState([]);
   const [databaseEntries, setDatabaseEntries] = useState([]);
@@ -482,6 +482,15 @@ const UQRFormsPreview = ({ mode = "forms" }) => {
       <div className="mx-auto flex max-w-[95%] flex-col gap-5">
         {/* Header */}
         <div>
+          {onBack && (
+            <button
+              type="button"
+              onClick={onBack}
+              className="mb-5 inline-flex cursor-pointer items-center gap-1 rounded-md border border-[#e2e3e8] bg-white px-4 py-2 text-sm font-medium text-foreground/70 transition-colors hover:bg-[#f5f5f5] hover:shadow-lg"
+            >
+              ← Back
+            </button>
+          )}
           <h1 className="text-3xl font-bold text-foreground">
             {isDatabaseMode ? "UQR Database" : "UQR Forms"}
           </h1>

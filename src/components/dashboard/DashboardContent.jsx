@@ -48,9 +48,25 @@ const DashboardContent = ({
     case "home":
       return <HomeContent user={user} />;
     case "uqr-forms":
-      return <UQRFormsPreview mode="forms" />;
+      return (
+        <UQRFormsPreview
+          mode="forms"
+          onBack={() => {
+            setActivePage("quality");
+            setHoveredMenu("quality");
+          }}
+        />
+      );
     case "uqr-database":
-      return <UQRFormsPreview mode="database" />;
+      return (
+        <UQRFormsPreview
+          mode="database"
+          onBack={() => {
+            setActivePage("quality");
+            setHoveredMenu("quality");
+          }}
+        />
+      );
     case "courier-slip":
       return <CourierSlip onBack={() => setActivePage("home")} />;
     case "courier-master":

@@ -132,7 +132,6 @@ const InwardStoreSheet = ({ onBack }) => {
   const [receivableType, setReceivableType] = useState("");
   const [ipoType, setIpoType] = useState("");
   const [selectedIpo, setSelectedIpo] = useState("");
-  const [selectedVpo, setSelectedVpo] = useState("");
   const [selectedIpc, setSelectedIpc] = useState("");
 
   const [goodsReceivingCondition, setGoodsReceivingCondition] = useState("");
@@ -149,7 +148,6 @@ const InwardStoreSheet = ({ onBack }) => {
 
   // Dropdown data
   const [ipoList, setIpoList] = useState([]);
-  const [vpoList, setVpoList] = useState([]);
   const [ipcList, setIpcList] = useState([]);
   // Issued VPOs (the new Purchase-department VPOs) used to auto-fill line items.
   const [issuedVpos, setIssuedVpos] = useState([]);
@@ -189,30 +187,6 @@ const InwardStoreSheet = ({ onBack }) => {
       })
       .catch(() => setIpoList([]));
   }, [ipoType]);
-
-  // Load VPOs (purchase orders) – we load all and let user pick
-  useEffect(() => {
-    // Purchase orders are available at the PO endpoint
-    const loadVPOs = async () => {
-      try {
-        const resp = await fetch(
-          `${import.meta.env.VITE_API_URL || "https://binder-backend-0szj.onrender.com/api/"}ims/purchase-orders/`,
-          {
-            headers: {
-              Authorization: `Bearer ${localStorage.getItem("access_token")}`,
-              "Content-Type": "application/json",
-            },
-          },
-        );
-        const data = await resp.json();
-        const results = data?.results || data || [];
-        setVpoList(Array.isArray(results) ? results : []);
-      } catch {
-        setVpoList([]);
-      }
-    };
-    loadVPOs();
-  }, []);
 
   // Load issued VPOs (new Purchase-department VPOs) for the auto-fill selector.
   // When an IPO is chosen we scope to it; otherwise list all issued VPOs.
@@ -350,7 +324,7 @@ const InwardStoreSheet = ({ onBack }) => {
         receivable_type: receivableType,
         ipo_type: ipoType,
         ipo: selectedIpo || null,
-        vpo: selectedVpo || null,
+        vpo: selectedIssuedVpo || null,
         ipc: selectedIpc || null,
         goods_receiving_condition: goodsReceivingCondition,
         goods_receiving_condition_image: goodsConditionUrl || "",
@@ -529,19 +503,6 @@ const InwardStoreSheet = ({ onBack }) => {
                 options={ipoList.map((ipo) => ({
                   value: ipo.id,
                   label: `${ipo.ipo_code} — ${ipo.program_name}`,
-                }))}
-              />
-            </div>
-
-            <div>
-              <label className={LABEL}>Select VPO</label>
-              <ThemedSelect
-                value={selectedVpo}
-                onChange={setSelectedVpo}
-                placeholder="-- Select VPO --"
-                options={vpoList.map((po) => ({
-                  value: po.id,
-                  label: `${po.po_code}${po.buyer_name ? ` — ${po.buyer_name}` : ""}`,
                 }))}
               />
             </div>

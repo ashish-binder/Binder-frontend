@@ -571,20 +571,6 @@ const HoverPanel = ({
               </button>
               <button
                 type="button"
-                className={`hover-panel-item ${activeSection === "uqr" || activePage === "uqr-forms" || activePage === "uqr-database" ? "active" : ""}`}
-                onMouseEnter={() =>
-                  setHoveredSubmenu({
-                    menu: "ims",
-                    section: "uqr",
-                    action: null,
-                    category: null,
-                  })
-                }
-              >
-                UQR
-              </button>
-              <button
-                type="button"
                 className={`hover-panel-item ${activeSection === "courier" || activePage === "courier-slip" || activePage === "courier-master" ? "active" : ""}`}
                 onMouseEnter={() =>
                   setHoveredSubmenu({
@@ -686,35 +672,6 @@ const HoverPanel = ({
               </div>
             </div>
           )}
-          {activeSection === "uqr" && (
-            <div className="hover-panel nested-panel">
-              <div className="hover-panel-column">
-                <div className="hover-panel-title">UQR</div>
-                <button
-                  type="button"
-                  className={`hover-panel-item ${activePage === "uqr-forms" ? "active" : ""}`}
-                  onClick={() => {
-                    setActivePage("uqr-forms");
-                    setHoveredSubmenu(null);
-                    setHoveredMenu(null);
-                  }}
-                >
-                  UQR Forms
-                </button>
-                <button
-                  type="button"
-                  className={`hover-panel-item ${activePage === "uqr-database" ? "active" : ""}`}
-                  onClick={() => {
-                    setActivePage("uqr-database");
-                    setHoveredSubmenu(null);
-                    setHoveredMenu(null);
-                  }}
-                >
-                  UQR Database
-                </button>
-              </div>
-            </div>
-          )}
           {activeSection === "courier" && (
             <div className="hover-panel nested-panel">
               <div className="hover-panel-column">
@@ -745,7 +702,6 @@ const HoverPanel = ({
             </div>
           )}
           {activeSection &&
-            activeSection !== "uqr" &&
             activeSection !== "courier" &&
             activeSection !== "inward" &&
             activeSection !== "outward" &&
@@ -776,7 +732,6 @@ const HoverPanel = ({
               </div>
             )}
           {activeAction &&
-            activeSection !== "uqr" &&
             activeSection !== "courier" &&
             activeSection !== "inward" &&
             activeSection !== "outward" &&
@@ -805,7 +760,6 @@ const HoverPanel = ({
               </div>
             )}
           {activeCategory &&
-            activeSection !== "uqr" &&
             activeSection !== "courier" &&
             activeSection !== "inward" &&
             activeSection !== "outward" &&
@@ -829,6 +783,44 @@ const HoverPanel = ({
                 </div>
               </div>
             )}
+        </div>
+      );
+    }
+
+    if (hoveredMenu === "quality") {
+      return (
+        <div
+          className="hover-panel-group"
+          ref={hoverPanelRef}
+          onMouseLeave={() => setHoveredSubmenu(null)}
+        >
+          <div className="hover-panel">
+            <div className="hover-panel-column">
+              <div className="hover-panel-title">Quality</div>
+              <button
+                type="button"
+                className={`hover-panel-item ${activePage === "uqr-forms" ? "active" : ""}`}
+                onClick={() => {
+                  setActivePage("uqr-forms");
+                  setHoveredSubmenu(null);
+                  setHoveredMenu(null);
+                }}
+              >
+                UQR Forms
+              </button>
+              <button
+                type="button"
+                className={`hover-panel-item ${activePage === "uqr-database" ? "active" : ""}`}
+                onClick={() => {
+                  setActivePage("uqr-database");
+                  setHoveredSubmenu(null);
+                  setHoveredMenu(null);
+                }}
+              >
+                UQR Database
+              </button>
+            </div>
+          </div>
         </div>
       );
     }

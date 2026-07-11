@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { Home, Menu, Search } from "lucide-react";
+import { Home, Menu, Search, ShieldCheck } from "lucide-react";
 import {
   FingerprintScanIcon,
   ReceiptIcon,
@@ -9,8 +9,6 @@ import {
 } from "../icons/SidebarIcons";
 
 const IMS_ACTIVE_PAGES = [
-  "uqr-forms",
-  "uqr-database",
   "courier-slip",
   "courier-master",
   "inward-store-sheet",
@@ -21,13 +19,17 @@ const IMS_ACTIVE_PAGES = [
   "stock-sheet-db",
 ];
 
+// UQR lives under its own "Quality" menu (moved out of Inventory Management).
+const QUALITY_ACTIVE_PAGES = ["uqr-forms", "uqr-database"];
+
 const getMenuItems = () => [
   { id: "home", label: "Home", icon: Home },
   { id: "tasks", label: "Tasks", icon: ReceiptIcon },
   { id: "code-creation", label: "Code Creation", icon: FingerprintScanIcon },
   { id: "ipo-management", label: "IPO Management", icon: Stack3Icon },
   { id: "purchase", label: "Purchase", icon: ShoppingBagIcon },
-  { id: "ims", label: "IMS", icon: StorefrontIcon },
+  { id: "ims", label: "Inventory Management", icon: StorefrontIcon },
+  { id: "quality", label: "Quality", icon: ShieldCheck },
 ];
 
 const Sidebar = ({
@@ -84,7 +86,9 @@ const Sidebar = ({
           {companyInitials}
         </div>
         <div className="logo-text-wrap-dash">
-          <span className="logo-text-dash">{companyDisplayName.split(" ")[0]}</span>
+          <span className="logo-text-dash">
+            {companyDisplayName.split(" ")[0]}
+          </span>
           {/* <span className="logo-subtitle-dash">Powered by Binder-OS</span> */}
         </div>
       </div>
@@ -93,7 +97,11 @@ const Sidebar = ({
     {!isSidebarCollapsed && (
       <div className="sidebar-search">
         <Search size={16} className="sidebar-search-icon" />
-        <input type="text" className="sidebar-search-input" placeholder="Search..." />
+        <input
+          type="text"
+          className="sidebar-search-input"
+          placeholder="Search..."
+        />
       </div>
     )}
 
@@ -103,12 +111,17 @@ const Sidebar = ({
           key={item.id}
           className={`nav-item ${
             activePage === item.id ||
-            (item.id === "ims" && IMS_ACTIVE_PAGES.includes(activePage))
+            (item.id === "ims" && IMS_ACTIVE_PAGES.includes(activePage)) ||
+            (item.id === "quality" && QUALITY_ACTIVE_PAGES.includes(activePage))
               ? "active"
               : ""
           }`}
           onClick={() => {
-            if (item.id === "home" || item.id === "tasks" || item.id === "purchase") {
+            if (
+              item.id === "home" ||
+              item.id === "tasks" ||
+              item.id === "purchase"
+            ) {
               setActivePage(item.id);
               setHoveredMenu(null);
               return;
@@ -140,13 +153,17 @@ const Sidebar = ({
         onClick={() => setShowProfileMenu((prev) => !prev)}
         aria-label="Open profile menu"
       >
-        <span className="user-avatar">{displayName?.charAt(0)?.toUpperCase() || "U"}</span>
+        <span className="user-avatar">
+          {displayName?.charAt(0)?.toUpperCase() || "U"}
+        </span>
         <span className="profile-username">{displayName}</span>
       </button>
       {showProfileMenu && (
         <div className="profile-menu profile-menu--sidebar">
           <div className="profile-menu-header">
-            {showEmailLine && <div className="profile-menu-email">{user.email}</div>}
+            {showEmailLine && (
+              <div className="profile-menu-email">{user.email}</div>
+            )}
           </div>
           <div className="profile-menu-divider" />
           <Link
@@ -177,7 +194,11 @@ const Sidebar = ({
             Master Panel
           </Link>
           <div className="profile-menu-divider" />
-          <button type="button" className="profile-menu-logout" onClick={handleLogout}>
+          <button
+            type="button"
+            className="profile-menu-logout"
+            onClick={handleLogout}
+          >
             Logout
           </button>
         </div>

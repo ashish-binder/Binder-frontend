@@ -32,6 +32,7 @@ const sectionToPage = (section) => {
   if (section === "ipo-management") return "ipo-management";
   if (section === "purchase") return "purchase";
   if (section === "ims") return "ims";
+  if (section === "quality") return "quality";
   return null;
 };
 
@@ -60,8 +61,6 @@ const pageToSection = (page) => {
   if (
     page === "ims" ||
     [
-      "uqr-forms",
-      "uqr-database",
       "courier-slip",
       "courier-master",
       "inward-store-sheet",
@@ -73,6 +72,10 @@ const pageToSection = (page) => {
     ].includes(page)
   ) {
     return "ims";
+  }
+  // UQR moved out of Inventory Management into its own "Quality" menu.
+  if (page === "quality" || ["uqr-forms", "uqr-database"].includes(page)) {
+    return "quality";
   }
   return "home";
 };
