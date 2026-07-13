@@ -65,9 +65,11 @@ export const initializeRawMaterials = (formData) => {
           sewWidth: '',
           sewUnit: '',
           sewWastage: '',
-          // Finishing (per FINISHING work order): process + types + remarks.
+          // Finishing (per FINISHING work order): a list of finishing-process groups,
+          // each { process, types, remarks }. Legacy flat fields kept for old rows.
           finishingProcess: '',
           finishingTypes: [],
+          finishingGroups: [],
           isRequired: '',
           wastage: '',
           forField: '',

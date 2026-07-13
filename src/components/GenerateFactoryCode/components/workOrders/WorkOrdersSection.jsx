@@ -2622,16 +2622,19 @@ const WorkOrdersSection = ({
                           width="lg"
                           className="mb-3"
                         />
-                        <WorkOrderDateFields
-                          startDate={workOrder.startDate}
-                          dateOfCompletion={workOrder.dateOfCompletion}
-                          onChange={(field, value) => handleWorkOrderChange(actualIndex, woIndex, field, value)}
-                          errorStartDate={errors[`rawMaterial_${actualIndex}_workOrder_${woIndex}_startDate`]}
-                          errorDateOfCompletion={errors[`rawMaterial_${actualIndex}_workOrder_${woIndex}_dateOfCompletion`]}
-                          startDateLabel="starting date"
-                          completionDateLabel="completion date"
-                          className="w-full"
-                        />
+                        {/* Start/completion dates are not shown in the Cut/Sew reuse. */}
+                        {!restrictType && (
+                          <WorkOrderDateFields
+                            startDate={workOrder.startDate}
+                            dateOfCompletion={workOrder.dateOfCompletion}
+                            onChange={(field, value) => handleWorkOrderChange(actualIndex, woIndex, field, value)}
+                            errorStartDate={errors[`rawMaterial_${actualIndex}_workOrder_${woIndex}_startDate`]}
+                            errorDateOfCompletion={errors[`rawMaterial_${actualIndex}_workOrder_${woIndex}_dateOfCompletion`]}
+                            startDateLabel="starting date"
+                            completionDateLabel="completion date"
+                            className="w-full"
+                          />
+                        )}
                       </div>
                         </>
                       )}
