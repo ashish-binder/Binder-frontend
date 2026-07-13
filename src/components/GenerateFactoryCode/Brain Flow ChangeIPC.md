@@ -608,6 +608,34 @@ BOM & WO) → fill **3 fields per work order**:
 
 **Verified:** `npm run build` green; no `no-undef`.
 
+### Change 17 — Starting / Completion dates removed (BOM & WO) — ✅ DONE
+Per Vikram: remove the work-order **"starting date *" / "completion date *"** pair from
+the IPC Spec.
+- Removed the `<WorkOrderDateFields>` block from `WorkOrdersSection.jsx` (it was the
+  only render site, shown on BOM & WO where `!restrictType`) and its import.
+- **Deleted** the now-orphaned `components/WorkOrderDateFields.jsx` component.
+- Dropped `startDate: ''` / `dateOfCompletion: ''` from both WO scaffolds in
+  `GenerateFactoryCode.jsx` and from `initializers.js`. No validation referenced them
+  (the `*` was hardcoded in the component, not enforced). **Build green.**
+
+### Change 16 — PROCUREMENT DATE removed (Factory Code) — ✅ DONE
+Per Vikram: field made non-mandatory then fully removed from the IPC / Factory-Code
+BOM & WO. Scope = **GenerateFactoryCode only** (IMS StockSheet left untouched, by his
+choice).
+- **UI**: date field deleted from every raw-material spec — `Step2.jsx` (Trim &
+  Accessory inline), `FabricSpec`, `FoamSpec`, `FiberSpec`, `YarnSpec`,
+  `StitchingThreadSpec`.
+- **Handlers/props**: removed `handleProcurementDateChange` + `todayDate` from Step2 and
+  every spec signature + all pass-throughs into the Foam/Fiber table sub-specs (those
+  never used them). Dropped now-unused `validateField` prop from Step2 and unused
+  `Input`/`Field` imports where they fell away.
+- **Validation**: removed the "Procurement Date is required/invalid/past" checks from
+  `validateField`, `validateStep2`, and `validateComponentMaterials`; `isMaterialComplete`
+  no longer requires it; removed the now-unused `today` locals.
+- **Data model**: dropped `procurementDate: ''` from the WO/material scaffolds
+  (`initializers.js` + the wizard add-material path). Old saved rows may still carry the
+  key harmlessly; nothing reads it. **Build green.**
+
 ### Change 15 — Finishing = repeatable process GROUPS — ✅ DONE
 (Supersedes an earlier wrong take where only the Process field became multi-select —
 rolled back.)

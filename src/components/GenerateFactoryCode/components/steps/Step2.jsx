@@ -51,7 +51,6 @@ const Step2 = ({
   addRawMaterialWithType,
   handleSave,
   removeRawMaterial,
-  validateField,
   validateStep2,
   validateComponentMaterials,
   savedComponents: savedComponentsProp = new Set(), // From parent – add/edit/remove material clears this
@@ -67,26 +66,6 @@ const Step2 = ({
   const [lastAddedMaterialIndex, setLastAddedMaterialIndex] = useState(null);
   const [scrollToMaterialIndex, setScrollToMaterialIndex] = useState(null); // Index to scroll to after removal
   const [saveStatus, setSaveStatus] = useState('idle'); // 'idle' | 'success' | 'error'
-  const todayDate = (() => {
-    const now = new Date();
-    const localNow = new Date(now.getTime() - now.getTimezoneOffset() * 60000);
-    return localNow.toISOString().split('T')[0];
-  })();
-
-  const handleProcurementDateChange = (materialIndex, value) => {
-    const fieldKey = `rawMaterial_${materialIndex}_procurementDate`;
-    if (!value || value >= todayDate) {
-      handleRawMaterialChange(materialIndex, 'procurementDate', value);
-      if (typeof validateField === 'function') {
-        validateField(fieldKey, value, materialIndex);
-      }
-      return;
-    }
-
-    if (typeof validateField === 'function') {
-      validateField(fieldKey, value, materialIndex);
-    }
-  };
 
   // Get all components for dropdown with done status
   const getAllComponents = () => {
@@ -578,8 +557,6 @@ const Step2 = ({
                   actualIndex={actualIndex}
                   errors={errors}
                   handleRawMaterialChange={handleRawMaterialChange}
-                  handleProcurementDateChange={handleProcurementDateChange}
-                  todayDate={todayDate}
                   mergeOptions={mergeOptions}
                   addCustomOption={addCustomOption}
                 />
@@ -592,8 +569,6 @@ const Step2 = ({
                   actualIndex={actualIndex}
                   errors={errors}
                   handleRawMaterialChange={handleRawMaterialChange}
-                  handleProcurementDateChange={handleProcurementDateChange}
-                  todayDate={todayDate}
                   mergeOptions={mergeOptions}
                   addCustomOption={addCustomOption}
                 />
@@ -607,8 +582,6 @@ const Step2 = ({
                 actualIndex={actualIndex}
                 errors={errors}
                 handleRawMaterialChange={handleRawMaterialChange}
-                handleProcurementDateChange={handleProcurementDateChange}
-                todayDate={todayDate}
                 mergeOptions={mergeOptions}
                 addCustomOption={addCustomOption}
               />
@@ -654,22 +627,6 @@ const Step2 = ({
                         errors={errors}
                         errorPrefix={`rawMaterial_${actualIndex}`}
                       />
-                      <div className="w-full max-w-sm" style={{ marginTop: '20px', paddingTop: '16px', borderTop: '1px solid var(--border)' }}>
-                        <Field
-                          label="PROCUREMENT DATE"
-                          required
-                          width="sm"
-                          error={errors[`rawMaterial_${actualIndex}_procurementDate`]}
-                        >
-                          <Input
-                            type="date"
-                            min={todayDate}
-                            value={material.procurementDate || ''}
-                            aria-invalid={errors[`rawMaterial_${actualIndex}_procurementDate`] ? true : undefined}
-                            onChange={(e) => handleProcurementDateChange(actualIndex, e.target.value)}
-                          />
-                        </Field>
-                      </div>
                     </div>
                   </div>
                 </div>
@@ -683,8 +640,6 @@ const Step2 = ({
                 actualIndex={actualIndex}
                 errors={errors}
                 handleRawMaterialChange={handleRawMaterialChange}
-                handleProcurementDateChange={handleProcurementDateChange}
-                todayDate={todayDate}
                 mergeOptions={mergeOptions}
                 addCustomOption={addCustomOption}
               />
@@ -697,8 +652,6 @@ const Step2 = ({
                 actualIndex={actualIndex}
                 errors={errors}
                 handleRawMaterialChange={handleRawMaterialChange}
-                handleProcurementDateChange={handleProcurementDateChange}
-                todayDate={todayDate}
                 mergeOptions={mergeOptions}
                 addCustomOption={addCustomOption}
               />

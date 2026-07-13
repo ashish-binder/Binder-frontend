@@ -2453,8 +2453,6 @@ const GenerateFactoryCode = ({
           design: '',
           imageRef: null,
           qualityVerification: '',
-          startDate: '',
-          dateOfCompletion: '',
           machineType: '',
           reed: '',
           pick: '',
@@ -2585,7 +2583,6 @@ const GenerateFactoryCode = ({
         netConsumption: '',
         unit: '',
         materialType: materialType,
-        procurementDate: '',
         qualityVerification: '',
         workOrders: [{
           workOrder: '',
@@ -2597,8 +2594,6 @@ const GenerateFactoryCode = ({
           design: '',
           imageRef: null,
           qualityVerification: '',
-          startDate: '',
-          dateOfCompletion: '',
           machineType: '',
           reed: '',
           pick: '',
@@ -4439,10 +4434,6 @@ const GenerateFactoryCode = ({
     let isValid = false;
     setErrors(prevErrors => {
       const newErrors = { ...prevErrors };
-      const todayLocal = new Date();
-      const today = new Date(todayLocal.getTime() - todayLocal.getTimezoneOffset() * 60000)
-        .toISOString()
-        .split('T')[0];
       
       // Material fields
       if (fieldKey.includes('materialType')) {
@@ -4471,19 +4462,7 @@ const GenerateFactoryCode = ({
         } else {
           delete newErrors[fieldKey];
         }
-      } else if (fieldKey.includes('procurementDate')) {
-        const dateValue = value?.toString().trim();
-        const isDateFormatValid = /^\d{4}-\d{2}-\d{2}$/.test(dateValue);
-        if (!dateValue) {
-          newErrors[fieldKey] = 'Procurement Date is required';
-        } else if (!isDateFormatValid) {
-          newErrors[fieldKey] = 'Procurement Date is invalid';
-        } else if (dateValue < today) {
-          newErrors[fieldKey] = 'Procurement Date cannot be in the past';
-        } else {
-          delete newErrors[fieldKey];
-        }
-      } 
+      }
       // Work order fields
       else if (fieldKey.includes('workOrder') && fieldKey.endsWith('_workOrder')) {
         if (!value?.trim()) {
@@ -4541,10 +4520,6 @@ const GenerateFactoryCode = ({
 
   const validateStep2 = () => {
     const newErrors = {};
-    const todayLocal = new Date();
-    const today = new Date(todayLocal.getTime() - todayLocal.getTimezoneOffset() * 60000)
-      .toISOString()
-      .split('T')[0];
 
     const stepData = getSelectedSkuStepData();
     const materials = (stepData && stepData.rawMaterials) || [];
@@ -4561,13 +4536,11 @@ const GenerateFactoryCode = ({
 
     const isMaterialComplete = (m) => {
       const unitValue = m?.unit?.toString().trim();
-      const procurementDate = m?.procurementDate?.toString().trim();
       return Boolean(
         m?.materialType?.toString().trim() &&
           m?.materialDescription?.toString().trim() &&
           m?.netConsumption?.toString().trim() &&
-          unitValue &&
-          procurementDate
+          unitValue
       );
     };
 
@@ -4590,14 +4563,6 @@ const GenerateFactoryCode = ({
       const unitValue = material.unit?.toString().trim();
       if (!unitValue || unitValue === '') {
         newErrors[`rawMaterial_${keyIndex}_unit`] = 'Unit is required';
-      }
-      const procurementDate = material.procurementDate?.toString().trim();
-      if (!procurementDate) {
-        newErrors[`rawMaterial_${keyIndex}_procurementDate`] = 'Procurement Date is required';
-      } else if (!/^\d{4}-\d{2}-\d{2}$/.test(procurementDate)) {
-        newErrors[`rawMaterial_${keyIndex}_procurementDate`] = 'Procurement Date is invalid';
-      } else if (procurementDate < today) {
-        newErrors[`rawMaterial_${keyIndex}_procurementDate`] = 'Procurement Date cannot be in the past';
       }
     });
     
@@ -4633,10 +4598,6 @@ const GenerateFactoryCode = ({
   // Validate materials for a specific component only
   const validateComponentMaterials = (componentName) => {
     const newErrors = {};
-    const todayLocal = new Date();
-    const today = new Date(todayLocal.getTime() - todayLocal.getTimezoneOffset() * 60000)
-      .toISOString()
-      .split('T')[0];
 
     const stepData = getSelectedSkuStepData();
     const allMaterials = (stepData && stepData.rawMaterials) || [];
@@ -4675,15 +4636,6 @@ const GenerateFactoryCode = ({
           newErrors[`${errorPrefix}_unit`] = 'Unit is required';
         }
       }
-      const procurementDate = material.procurementDate?.toString().trim();
-      if (!procurementDate) {
-        newErrors[`${errorPrefix}_procurementDate`] = 'Procurement Date is required';
-      } else if (!/^\d{4}-\d{2}-\d{2}$/.test(procurementDate)) {
-        newErrors[`${errorPrefix}_procurementDate`] = 'Procurement Date is invalid';
-      } else if (procurementDate < today) {
-        newErrors[`${errorPrefix}_procurementDate`] = 'Procurement Date cannot be in the past';
-      }
-      
       // === FABRIC SPECIFIC FIELDS ===
       if (matType === 'Fabric') {
         const fabricResult = validateMaterialAgainstSchema(material, FABRIC_SCHEMA, errorPrefix);

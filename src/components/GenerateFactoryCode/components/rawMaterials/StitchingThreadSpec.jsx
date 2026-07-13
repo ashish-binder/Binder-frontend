@@ -2,7 +2,6 @@
 // state lives in the GenerateFactoryCode orchestrator and arrives via props.
 import { Button } from '@/components/ui/button';
 import { Field } from '@/components/ui/field';
-import { Input } from '@/components/ui/input';
 import QualityVerificationToggle from '../QualityVerificationToggle';
 import { MATERIAL_APPROVAL_OPTIONS } from '../../data/approvalOptions';
 import SearchableDropdown from '../SearchableDropdown';
@@ -12,8 +11,6 @@ const StitchingThreadSpec = ({
   actualIndex,
   errors,
   handleRawMaterialChange,
-  handleProcurementDateChange,
-  todayDate,
 }) => (
   <>
                 <div style={{ marginTop: '24px', paddingTop: '24px', borderTop: '1px solid #e5e7eb' }}>
@@ -473,22 +470,6 @@ const StitchingThreadSpec = ({
                         width="lg"
                         className="mb-3"
                       />
-                    </div>
-                    <div className="w-full max-w-sm" style={{ marginTop: '12px' }}>
-                      <Field
-                        label="PROCUREMENT DATE"
-                        required
-                        width="sm"
-                        error={errors[`rawMaterial_${actualIndex}_procurementDate`]}
-                      >
-                        <Input
-                          type="date"
-                          min={todayDate}
-                          value={material.procurementDate || ''}
-                          aria-invalid={errors[`rawMaterial_${actualIndex}_procurementDate`] ? true : undefined}
-                          onChange={(e) => handleProcurementDateChange(actualIndex, e.target.value)}
-                        />
-                      </Field>
                     </div>
                   </div>
                 </div>

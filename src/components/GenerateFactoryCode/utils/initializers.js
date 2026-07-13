@@ -16,7 +16,6 @@ export const initializeRawMaterials = (formData) => {
         unit: component.unit || '',
         qualityVerification: '',
         materialType: '', // 'Yarn' or 'Fabric'
-        procurementDate: '',
         fiberType: '',
         yarnType: '',
         spinningMethod: '',
@@ -78,8 +77,6 @@ export const initializeRawMaterials = (formData) => {
           design: '',
           imageRef: null,
           qualityVerification: '',
-          startDate: '',
-          dateOfCompletion: '',
           machineType: '',
           reed: '',
           pick: '',
