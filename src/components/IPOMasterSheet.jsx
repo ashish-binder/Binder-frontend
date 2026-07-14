@@ -1,24 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import Pagination from '@/components/ui/Pagination';
-import { getIPOs } from '../services/integration';
-import { useLoading } from '../context/LoadingContext';
-
-const PAGE_SIZE = 10;
-
-const COMPLETED_KEY = 'completedIpos';
-
-// Read the set of completed IPO keys (id-or-code) from localStorage. Wrapped
-// in a try/catch so corrupted or missing storage doesn't break the page.
-const readCompletedKeys = () => {
-  try {
-    const raw = localStorage.getItem(COMPLETED_KEY);
-    const parsed = raw ? JSON.parse(raw) : [];
-    return new Set(Array.isArray(parsed) ? parsed.map(String) : []);
-  } catch {
-    return new Set();
-  }
-};
+import { getIPOs, setIposCompleted } from '../services/integration';
+import { useServerPagination } from '../hooks/useServerPagination';
 
 const extractItems = (payload) => {
   if (Array.isArray(payload)) return payload;
@@ -27,98 +11,74 @@ const extractItems = (payload) => {
   if (Array.isArray(payload?.data?.results)) return payload.data.results;
   return [];
 };
+const getCount = (payload, fallback) =>
+  Number.isFinite(payload?.count) ? payload.count : fallback;
 
-const normalizeIpo = (ipo) => {
-  const id = String(ipo.id || ipo.ipoId || '');
-  const code = ipo.ipo_code || ipo.ipoCode || '';
-  return {
-    // Stable identifier used for completion tracking. Prefer numeric id; fall
-    // back to the IPO code if id isn't returned by the API.
-    key: id || code,
-    id,
-    code,
-    orderType: ipo.order_type || ipo.orderType || '',
-    createdAt: ipo.created_at || ipo.createdAt || '',
-  };
-};
+const normalizeIpo = (ipo) => ({
+  id: String(ipo.id || ipo.ipoId || ''),
+  code: ipo.ipo_code || ipo.ipoCode || '',
+  orderType: ipo.order_type || ipo.orderType || '',
+  createdAt: ipo.created_at || ipo.createdAt || '',
+});
 
 const IPOMasterSheet = ({ onBack }) => {
-  const [ipos, setIpos] = useState([]);
-  const [completedKeys, setCompletedKeys] = useState(readCompletedKeys);
-  const [pendingKeys, setPendingKeys] = useState(() => new Set());
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  // Selected IPO ids pending "Save" (marks them completed in the DB).
+  const [pendingIds, setPendingIds] = useState(() => new Set());
   const [savedFlash, setSavedFlash] = useState(false);
-  const [page, setPage] = useState(1);
-  const { showLoading, hideLoading } = useLoading();
+  const [saving, setSaving] = useState(false);
 
-  const fetchIpos = useCallback(async () => {
-    showLoading();
-    try {
-      setLoading(true);
-      setError(null);
-      // "Completed" status lives in localStorage (not the backend), so we
-      // fetch the full IPO set (page_size at the server max) and split
-      // active/completed on the client. Pagination below is client-side.
-      const response = await getIPOs({ page_size: 200 });
-      const list = extractItems(response).map(normalizeIpo);
-      setIpos(list);
-      // Re-sync the completed-keys cache too, in case the Dashboard scrubbed
-      // a deleted IPO from it while we were mounted.
-      setCompletedKeys(readCompletedKeys());
-    } catch (err) {
-      console.warn('Failed to load IPOs:', err);
-      setError('Failed to load IPOs. Please try again.');
-    } finally {
-      setLoading(false);
-      hideLoading();
-    }
-  }, [showLoading, hideLoading]);
+  // Only active (not-yet-completed) IPOs, paginated server-side.
+  const fetchPage = useCallback(({ page, pageSize }) => {
+    return getIPOs({ is_completed: false, page, page_size: pageSize }).then((res) => {
+      const results = extractItems(res).map(normalizeIpo);
+      return { results, count: getCount(res, results.length) };
+    });
+  }, []);
 
+  const {
+    items: ipos,
+    count,
+    page,
+    setPage,
+    pageSize,
+    loading,
+    error,
+    refresh,
+  } = useServerPagination(fetchPage, { pageSize: 10 });
+
+  // Refresh when an IPO is deleted/created elsewhere in the app.
   useEffect(() => {
-    fetchIpos();
-  }, [fetchIpos]);
-
-  // Refresh when an IPO is deleted from anywhere else in the app
-  // (Dashboard dispatches this after a successful deleteIPO call).
-  useEffect(() => {
-    const handler = () => fetchIpos();
+    const handler = () => refresh();
     window.addEventListener('internalPurchaseOrdersUpdated', handler);
     return () => window.removeEventListener('internalPurchaseOrdersUpdated', handler);
-  }, [fetchIpos]);
+  }, [refresh]);
 
-  const togglePending = (key) => {
-    setPendingKeys((prev) => {
+  const togglePending = (id) => {
+    setPendingIds((prev) => {
       const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
       return next;
     });
   };
 
-  const handleSave = () => {
-    if (pendingKeys.size === 0) return;
-    const merged = new Set([...completedKeys, ...pendingKeys]);
-    localStorage.setItem(COMPLETED_KEY, JSON.stringify(Array.from(merged)));
-    setCompletedKeys(merged);
-    setPendingKeys(new Set());
-    setSavedFlash(true);
-    setTimeout(() => setSavedFlash(false), 2000);
+  const handleSave = async () => {
+    if (pendingIds.size === 0 || saving) return;
+    setSaving(true);
+    try {
+      await setIposCompleted([...pendingIds], true);
+      setPendingIds(new Set());
+      setSavedFlash(true);
+      setTimeout(() => setSavedFlash(false), 2000);
+      // Completed IPOs leave the active list — reload the current page.
+      refresh();
+    } catch (err) {
+      console.warn('Failed to mark IPOs completed:', err);
+      alert('Failed to save. Please try again.');
+    } finally {
+      setSaving(false);
+    }
   };
-
-  // Active = IPOs that haven't been marked completed yet.
-  const activeIpos = useMemo(
-    () => ipos.filter((ipo) => !completedKeys.has(ipo.key)),
-    [ipos, completedKeys],
-  );
-
-  // Client-side pagination over the active list (10 per screen). Clamp the
-  // page if the list shrinks (e.g. after saving completions).
-  const totalPages = Math.max(1, Math.ceil(activeIpos.length / PAGE_SIZE));
-  useEffect(() => {
-    if (page > totalPages) setPage(totalPages);
-  }, [page, totalPages]);
-  const pagedIpos = activeIpos.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
   const headerCellStyle = {
     padding: '14px 20px',
@@ -164,13 +124,13 @@ const IPOMasterSheet = ({ onBack }) => {
         <Button
           variant="default"
           onClick={handleSave}
-          disabled={pendingKeys.size === 0}
+          disabled={pendingIds.size === 0 || saving}
           type="button"
         >
-          Save{pendingKeys.size > 0 ? ` (${pendingKeys.size} selected)` : ''}
+          {saving ? 'Saving…' : `Save${pendingIds.size > 0 ? ` (${pendingIds.size} selected)` : ''}`}
         </Button>
         <span className="text-sm text-muted-foreground">
-          Active IPOs: <strong className="text-foreground">{activeIpos.length}</strong>
+          Active IPOs: <strong className="text-foreground">{count}</strong>
         </span>
         {savedFlash && (
           <span style={{ fontSize: 13, color: 'var(--primary)', fontWeight: 600 }}>
@@ -179,15 +139,15 @@ const IPOMasterSheet = ({ onBack }) => {
         )}
       </div>
 
-      {loading ? (
+      {loading && ipos.length === 0 ? (
         <div style={{ textAlign: 'center', padding: '48px', color: 'var(--muted-foreground)' }}>
           Loading IPOs...
         </div>
       ) : error ? (
         <div style={{ textAlign: 'center', padding: '48px', color: 'var(--destructive)' }}>
-          {error}
+          Failed to load IPOs. Please try again.
         </div>
-      ) : activeIpos.length === 0 ? (
+      ) : ipos.length === 0 ? (
         <div style={{ textAlign: 'center', padding: '48px', color: 'var(--muted-foreground)' }}>
           No active IPOs. Generate an IPO code to add one to this list.
         </div>
@@ -198,6 +158,8 @@ const IPOMasterSheet = ({ onBack }) => {
             borderRadius: 'var(--radius-lg)',
             overflowX: 'auto',
             backgroundColor: 'var(--card)',
+            opacity: loading ? 0.6 : 1,
+            transition: 'opacity 0.15s',
           }}
         >
           <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '500px' }}>
@@ -215,11 +177,11 @@ const IPOMasterSheet = ({ onBack }) => {
               </tr>
             </thead>
             <tbody>
-              {pagedIpos.map((ipo, index) => (
+              {ipos.map((ipo, index) => (
                 <tr
-                  key={ipo.key || index}
+                  key={ipo.id || index}
                   style={{
-                    borderBottom: index < pagedIpos.length - 1 ? '1px solid var(--border)' : 'none',
+                    borderBottom: index < ipos.length - 1 ? '1px solid var(--border)' : 'none',
                     transition: 'background-color 0.15s',
                   }}
                   onMouseEnter={(e) => {
@@ -233,8 +195,8 @@ const IPOMasterSheet = ({ onBack }) => {
                   <td style={{ ...bodyCellStyle, textAlign: 'center' }}>
                     <input
                       type="checkbox"
-                      checked={pendingKeys.has(ipo.key)}
-                      onChange={() => togglePending(ipo.key)}
+                      checked={pendingIds.has(ipo.id)}
+                      onChange={() => togglePending(ipo.id)}
                       style={{ width: 18, height: 18, cursor: 'pointer' }}
                       aria-label={`Mark ${ipo.code} as completed`}
                     />
@@ -249,9 +211,10 @@ const IPOMasterSheet = ({ onBack }) => {
       {!loading && !error && (
         <Pagination
           page={page}
-          pageSize={PAGE_SIZE}
-          totalCount={activeIpos.length}
+          pageSize={pageSize}
+          totalCount={count}
           onPageChange={setPage}
+          disabled={loading}
         />
       )}
     </div>

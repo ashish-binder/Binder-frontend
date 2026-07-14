@@ -864,6 +864,24 @@ export const getIPO = async (ipoId) => {
   return await response.json();
 };
 
+// Mark IPOs completed (or active again) — persisted server-side, tenant-wide.
+export const setIposCompleted = async (ids, completed = true) => {
+  const response = await apiRequest('ims/ipos/set-completed/', {
+    method: 'POST',
+    body: JSON.stringify({ ids, completed }),
+  });
+  return await response.json();
+};
+
+// Return every completed IPO for the tenant back to active.
+export const clearCompletedIpos = async () => {
+  const response = await apiRequest('ims/ipos/clear-completed/', {
+    method: 'POST',
+    body: JSON.stringify({}),
+  });
+  return await response.json();
+};
+
 export const createIPO = async (ipoData) => {
   const response = await apiRequest('ims/ipos/', {
     method: 'POST',

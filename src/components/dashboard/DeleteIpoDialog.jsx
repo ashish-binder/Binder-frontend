@@ -45,25 +45,6 @@ const DeleteIpoDialog = ({
       await deleteIPO(targetId);
       const deletedCode = ipoToDelete.ipoCode || ipoToDelete.code || "";
 
-      // Keep local completed cache in sync after delete.
-      try {
-        const raw = localStorage.getItem("completedIpos");
-        const parsed = raw ? JSON.parse(raw) : [];
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          const deletedId = String(targetId);
-          const deletedCodeStr = String(deletedCode);
-          const next = parsed.filter((k) => {
-            const s = String(k);
-            return s !== deletedId && s !== deletedCodeStr;
-          });
-          if (next.length !== parsed.length) {
-            localStorage.setItem("completedIpos", JSON.stringify(next));
-          }
-        }
-      } catch (cleanupErr) {
-        console.warn("Failed to clean completedIpos cache:", cleanupErr);
-      }
-
       setIpoToDelete(null);
       setHoveredSubmenu(null);
       setHoveredMenu(null);
