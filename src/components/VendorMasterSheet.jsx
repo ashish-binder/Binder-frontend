@@ -350,7 +350,7 @@ const VendorMasterSheet = ({ onBack, onEditVendor }) => {
                   </tr>
                 </thead>
                 <tbody>
-                  {sortedVendors.map((vendor, index) => (
+                  {vendors.map((vendor, index) => (
                     <tr
                       key={vendor.code || index}
                       className="transition-colors hover:bg-muted/50"
