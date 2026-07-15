@@ -1,10 +1,20 @@
 import { useState, useCallback } from 'react';
-import { FiEye, FiEdit2, FiTrash2 } from 'react-icons/fi';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import Pagination from '@/components/ui/Pagination';
+import { createPortal } from 'react-dom';
+import { FiEye, FiEdit2, FiTrash2, FiSearch, FiX } from 'react-icons/fi';
+import toast from 'react-hot-toast';
 import { getBuyerCodes, deleteBuyerCode } from '../services/integration';
+import Pagination from '@/components/ui/Pagination';
 import { useServerPagination } from '../hooks/useServerPagination';
+
+// Shared Tailwind class strings — flat/clean theme matching the StockSheet revamp.
+const TH =
+  'border-b border-[#e2e3e8] bg-muted px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-foreground whitespace-nowrap';
+const TD = 'border-b border-[#e2e3e8] px-4 py-3 align-middle text-sm text-foreground';
+
+const hasValue = (value) => {
+  if (value === null || value === undefined) return false;
+  return String(value).trim() !== '';
+};
 
 const extractItems = (payload) => {
   if (Array.isArray(payload)) return payload;
@@ -38,6 +48,99 @@ const SORT_FIELDS = {
   retailer: 'retailer',
   createdAt: 'created_at',
 };
+
+const formatDate = (dateString) => {
+  const date = new Date(dateString);
+  if (Number.isNaN(date.getTime())) return '—';
+  return date.toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' });
+};
+
+// Small label/value pair used inside the details popup.
+const Detail = ({ label, value }) => (
+  <div className="min-w-0">
+    <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+      {label}
+    </div>
+    <div className="mt-0.5 break-words text-sm text-foreground">
+      {hasValue(value) ? value : '—'}
+    </div>
+  </div>
+);
+
+const DetailSection = ({ title, children }) => (
+  <div className="break-inside-avoid">
+    <h3 className="mb-3 text-xs font-bold uppercase tracking-wide text-foreground">{title}</h3>
+    <div className="grid grid-cols-1 gap-y-3">{children}</div>
+  </div>
+);
+
+// Buyer Details popup — portalled to <body> so the shell's zoom doesn't distort it.
+const BuyerDetailsModal = ({ buyer, onClose }) =>
+  createPortal(
+    <div
+      className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/50 p-4"
+      style={{ fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif' }}
+      onClick={onClose}
+    >
+      <div
+        className="flex max-h-[92vh] w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-[#e2e3e8] bg-card shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between border-b border-[#e2e3e8] px-6 py-4">
+          <div className="flex items-center gap-3">
+            <span className="rounded-md bg-primary px-2.5 py-1 font-mono text-xs font-semibold text-primary-foreground">
+              {buyer.code || '—'}
+            </span>
+            <h2 className="text-lg font-bold text-foreground">
+              {buyer.buyerName || 'Buyer Details'}
+            </h2>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            title="Close"
+          >
+            <FiX className="text-lg" />
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="overflow-y-auto px-6 py-5">
+          <div className="grid grid-cols-1 gap-x-10 gap-y-6 sm:grid-cols-2">
+            <DetailSection title="Basic Information">
+              <Detail label="Buyer Name" value={buyer.buyerName} />
+              <Detail label="End Customer" value={buyer.retailer} />
+              {hasValue(buyer.buyerAddress) && (
+                <Detail label="Address" value={buyer.buyerAddress} />
+              )}
+            </DetailSection>
+
+            <DetailSection title="Contact Information">
+              <Detail label="Contact Person" value={buyer.contactPerson} />
+            </DetailSection>
+
+            <DetailSection title="Created Date">
+              <Detail label="Created" value={formatDate(buyer.createdAt)} />
+            </DetailSection>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="flex justify-end border-t border-[#e2e3e8] px-6 py-4">
+          <button
+            type="button"
+            onClick={onClose}
+            className="cursor-pointer rounded-md bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground transition-all hover:opacity-90"
+          >
+            Close
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
 
 const BuyerMasterSheet = ({ onBack, onEditBuyer }) => {
   const [selectedBuyer, setSelectedBuyer] = useState(null);
@@ -75,32 +178,31 @@ const BuyerMasterSheet = ({ onBack, onEditBuyer }) => {
     if (field) toggleSort(field);
   };
 
-  const formatDate = (dateString) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-IN', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-    });
-  };
-
   const handleDeleteBuyer = async (buyer) => {
-    if (window.confirm('Are you sure you want to delete this buyer?')) {
-      const idsToTry = [buyer.id, buyer.code].filter(Boolean);
-      for (const identifier of [...new Set(idsToTry)]) {
-        try {
-          await deleteBuyerCode(identifier);
-          break;
-        } catch (err) {
-          console.warn(`API delete with "${identifier}" failed:`, err);
-        }
+    if (!window.confirm('Are you sure you want to delete this buyer?')) return;
+
+    const idsToTry = [...new Set([buyer.id, buyer.code].filter(Boolean))];
+    let deleted = false;
+    for (const identifier of idsToTry) {
+      try {
+        await deleteBuyerCode(identifier);
+        deleted = true;
+        break;
+      } catch (err) {
+        console.warn(`API delete with "${identifier}" failed:`, err);
       }
+    }
+
+    if (deleted) {
+      toast.success(`Buyer ${buyer.code || ''} deleted.`.replace(/\s+/g, ' ').trim());
       // If we just deleted the last row on a later page, step back a page.
       if (buyers.length === 1 && page > 1) {
         setPage(page - 1);
       } else {
         refresh();
       }
+    } else {
+      toast.error('Failed to delete buyer. Please try again.');
     }
   };
 
@@ -111,120 +213,66 @@ const BuyerMasterSheet = ({ onBack, onEditBuyer }) => {
       onEditBuyer(buyer);
       return;
     }
-    alert('Edit buyer handler is not configured.');
+    toast.error('Edit buyer handler is not configured.');
   };
 
   const getSortIcon = (columnKey) => {
-    const field = SORT_FIELDS[columnKey];
-    if (sortField !== field) {
-      return <span style={{ marginLeft: '8px', fontSize: '12px', opacity: 0.7 }}>↕</span>;
+    if (sortField !== SORT_FIELDS[columnKey]) {
+      return <span className="ml-1 text-[10px] opacity-40">↕</span>;
     }
-    return sortDir === 'asc' ? (
-      <span style={{ marginLeft: '8px', fontSize: '12px', opacity: 1, color: 'var(--primary)' }}>↑</span>
-    ) : (
-      <span style={{ marginLeft: '8px', fontSize: '12px', opacity: 1, color: 'var(--primary)' }}>↓</span>
+    return (
+      <span className="ml-1 text-[10px] text-primary">
+        {sortDir === 'asc' ? '↑' : '↓'}
+      </span>
     );
   };
 
-  const headerCellStyle = (extra = {}) => ({
-    padding: '16px 20px',
-    textAlign: 'left',
-    fontWeight: '600',
-    fontSize: '14px',
-    color: 'var(--foreground)',
-    cursor: 'pointer',
-    userSelect: 'none',
-    whiteSpace: 'nowrap',
-    ...extra,
-  });
-
-  // Buyer Details Modal
-  const BuyerDetailsModal = ({ buyer, onClose }) => (
-    <div
-      style={{
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        backgroundColor: 'rgba(0, 0, 0, 0.7)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        zIndex: 1000,
-        padding: '20px',
-      }}
-      onClick={onClose}
+  const SortableTh = ({ label, sortKey, width }) => (
+    <th
+      className={`${TH} cursor-pointer select-none`}
+      style={{ width }}
+      onClick={() => handleSort(sortKey)}
     >
-      <div
-        style={{
-          backgroundColor: 'var(--card)',
-          borderRadius: 'var(--radius-lg)',
-          padding: '24px',
-          maxWidth: '600px',
-          width: '100%',
-          maxHeight: '90vh',
-          overflowY: 'auto',
-          border: '1px solid var(--border)',
-        }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
-          <h2 style={{ fontSize: '20px', fontWeight: '600', color: 'var(--foreground)' }}>
-            Buyer Details - Code: {buyer.code}
-          </h2>
-          <Button variant="ghost" size="icon" onClick={onClose} className="h-8 w-8">
-            ×
-          </Button>
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-          <div>
-            <label style={{ fontSize: '12px', fontWeight: '600', color: 'var(--muted-foreground)', display: 'block', marginBottom: '4px' }}>
-              Buyer Name:
-            </label>
-            <span style={{ fontSize: '14px', color: 'var(--foreground)' }}>{buyer.buyerName}</span>
-          </div>
-          <div>
-            <label style={{ fontSize: '12px', fontWeight: '600', color: 'var(--muted-foreground)', display: 'block', marginBottom: '4px' }}>
-              Contact Person:
-            </label>
-            <span style={{ fontSize: '14px', color: 'var(--foreground)' }}>{buyer.contactPerson}</span>
-          </div>
-          <div>
-            <label style={{ fontSize: '12px', fontWeight: '600', color: 'var(--muted-foreground)', display: 'block', marginBottom: '4px' }}>
-              End Customer:
-            </label>
-            <span style={{ fontSize: '14px', color: 'var(--foreground)' }}>{buyer.retailer}</span>
-          </div>
-          <div>
-            <label style={{ fontSize: '12px', fontWeight: '600', color: 'var(--muted-foreground)', display: 'block', marginBottom: '4px' }}>
-              Created Date:
-            </label>
-            <span style={{ fontSize: '14px', color: 'var(--foreground)' }}>{formatDate(buyer.createdAt)}</span>
-          </div>
-        </div>
-      </div>
-    </div>
+      {label}
+      {getSortIcon(sortKey)}
+    </th>
   );
 
   return (
-    <div className="fullscreen-content" style={{ overflowY: 'auto' }}>
-      <div className="content-header">
-        <Button variant="outline" onClick={onBack} type="button" className="mb-6 bg-white">
-          ← Back to Buyer Management
-        </Button>
-        <h1 className="fullscreen-title">Buyer Master Sheet</h1>
-        <p className="fullscreen-description">View and manage all registered buyers in the system</p>
-      </div>
+    <div
+      className="min-h-full w-full overflow-y-auto bg-[#f3f4f6] py-9"
+      style={{
+        zoom: 0.9,
+        fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif',
+        '--accent': '#edeef1',
+      }}
+    >
+      <div className="mx-auto max-w-[95%] space-y-5">
+        {/* Header */}
+        <div>
+          <button
+            type="button"
+            onClick={onBack}
+            className="mb-5 inline-flex cursor-pointer items-center gap-1 rounded-md border border-[#e2e3e8] bg-white px-4 py-2 text-sm font-medium text-foreground/70 transition-colors hover:bg-[#f5f5f5] hover:shadow-lg"
+          >
+            ← Back to Buyer Management
+          </button>
+          <h1 className="text-3xl font-bold text-foreground">Buyer Master Sheet</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            View and manage all registered buyers in the system
+          </p>
+        </div>
 
-      <div style={{ maxWidth: '100%', width: '100%', marginBottom: '24px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '24px' }}>
-          <div style={{ flex: 1, maxWidth: '500px' }}>
-            <Input
+        {/* Search + count */}
+        <div className="flex flex-wrap items-center gap-4">
+          <div className="relative min-w-65 max-w-xl flex-1">
+            <FiSearch className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <input
               type="text"
               placeholder="Search by buyer name, code, contact person, or end customer..."
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
+              className="w-full rounded-md border border-[#e2e3e8] bg-card py-3 pl-10 pr-4 text-sm text-foreground outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/15"
             />
           </div>
           <div className="text-sm text-muted-foreground">
@@ -233,133 +281,108 @@ const BuyerMasterSheet = ({ onBack, onEditBuyer }) => {
         </div>
 
         {loading && buyers.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '48px', color: 'var(--muted-foreground)' }}>
-            Loading buyers...
-          </div>
+          <p className="p-12 text-center text-sm text-muted-foreground">Loading buyers...</p>
         ) : error ? (
-          <div style={{ textAlign: 'center', padding: '48px', color: 'var(--destructive)' }}>
-            Failed to load buyers
-          </div>
+          <p className="p-12 text-center text-sm text-destructive">Failed to load buyers</p>
         ) : buyers.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '48px', color: 'var(--muted-foreground)' }}>
-            No buyers found{searchInput ? ' matching your search' : ''}.
+          <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-[#d5d6dc] bg-card px-6 py-16 text-center">
+            <p className="text-base text-muted-foreground">
+              No buyers found{searchInput ? ' matching your search' : ''}.
+            </p>
           </div>
         ) : (
           <div
-            style={{
-              border: '1px solid var(--border)',
-              borderRadius: 'var(--radius-lg)',
-              overflowX: 'auto',
-              overflowY: 'visible',
-              backgroundColor: 'var(--card)',
-              opacity: loading ? 0.6 : 1,
-              transition: 'opacity 0.15s',
-            }}
+            className="overflow-hidden rounded-lg border border-[#e2e3e8] bg-card"
+            style={{ opacity: loading ? 0.6 : 1, transition: 'opacity 0.15s' }}
           >
-            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '1000px' }}>
-              <thead>
-                <tr style={{ backgroundColor: 'var(--muted)', borderBottom: '2px solid var(--border)' }}>
-                  <th onClick={() => handleSort('code')} style={headerCellStyle({ width: '120px' })}>
-                    BUYER CODE {getSortIcon('code')}
-                  </th>
-                  <th onClick={() => handleSort('buyerName')} style={headerCellStyle({ width: '250px' })}>
-                    BUYER NAME {getSortIcon('buyerName')}
-                  </th>
-                  <th onClick={() => handleSort('contactPerson')} style={headerCellStyle({ width: '200px' })}>
-                    CONTACT PERSON {getSortIcon('contactPerson')}
-                  </th>
-                  <th onClick={() => handleSort('retailer')} style={headerCellStyle({ width: '250px' })}>
-                    END CUSTOMER {getSortIcon('retailer')}
-                  </th>
-                  <th onClick={() => handleSort('createdAt')} style={headerCellStyle({ width: '120px' })}>
-                    CREATED {getSortIcon('createdAt')}
-                  </th>
-                  <th style={headerCellStyle({ width: '130px', cursor: 'default' })}>ACTIONS</th>
-                </tr>
-              </thead>
-              <tbody>
-                {buyers.map((buyer, index) => (
-                  <tr
-                    key={buyer.code || index}
-                    style={{
-                      borderBottom: index < buyers.length - 1 ? '1px solid var(--border)' : 'none',
-                      transition: 'background-color 0.15s',
-                      cursor: 'default',
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.backgroundColor = 'var(--muted)';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.backgroundColor = 'transparent';
-                    }}
-                  >
-                    <td style={{ padding: '16px 20px', verticalAlign: 'middle', borderRight: '1px solid var(--border)' }}>
-                      <span
-                        style={{
-                          display: 'inline-block',
-                          padding: '6px 12px',
-                          backgroundColor: 'var(--primary)',
-                          color: 'var(--primary-foreground)',
-                          borderRadius: 'var(--radius-md)',
-                          fontSize: '13px',
-                          fontWeight: '600',
-                          fontFamily: 'var(--font-mono)',
-                          letterSpacing: '0.5px',
-                        }}
-                      >
-                        {buyer.code || 'N/A'}
-                      </span>
-                    </td>
-                    <td style={{ padding: '16px 20px', verticalAlign: 'middle' }}>
-                      <strong style={{ fontSize: '15px', fontWeight: '600', color: 'var(--foreground)' }}>
-                        {buyer.buyerName || 'N/A'}
-                      </strong>
-                    </td>
-                    <td style={{ padding: '16px 20px', verticalAlign: 'middle' }}>
-                      <span style={{ fontSize: '14px', fontWeight: '500', color: 'var(--foreground)' }}>
-                        {buyer.contactPerson || 'N/A'}
-                      </span>
-                    </td>
-                    <td style={{ padding: '16px 20px', verticalAlign: 'middle' }}>
-                      <span style={{ fontSize: '14px', color: 'var(--foreground)' }}>
-                        {buyer.retailer || 'N/A'}
-                      </span>
-                    </td>
-                    <td style={{ padding: '16px 20px', verticalAlign: 'middle' }}>
-                      <span style={{ fontSize: '14px', color: 'var(--foreground)' }}>
-                        {formatDate(buyer.createdAt)}
-                      </span>
-                    </td>
-                    <td style={{ padding: '16px 20px', verticalAlign: 'middle' }}>
-                      <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-                        <Button variant="ghost" size="icon" onClick={() => handleViewDetails(buyer)} title="View Details" className="h-8 w-8">
-                          <FiEye style={{ fontSize: '16px' }} />
-                        </Button>
-                        <Button variant="ghost" size="icon" onClick={() => handleEditBuyer(buyer)} title="Edit Buyer" className="h-8 w-8">
-                          <FiEdit2 style={{ fontSize: '16px' }} />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleDeleteBuyer(buyer)}
-                          title="Delete Buyer"
-                          className="h-8 w-8 text-destructive hover:text-destructive"
-                        >
-                          <FiTrash2 style={{ fontSize: '16px' }} />
-                        </Button>
-                      </div>
-                    </td>
+            <div className="overflow-x-auto">
+              <table className="w-full table-fixed border-collapse text-sm" style={{ minWidth: 950 }}>
+                <thead>
+                  <tr>
+                    <SortableTh label="Buyer Code" sortKey="code" width={110} />
+                    <SortableTh label="Buyer Name" sortKey="buyerName" width={230} />
+                    <SortableTh label="Contact Person" sortKey="contactPerson" width={190} />
+                    <SortableTh label="End Customer" sortKey="retailer" width={230} />
+                    <SortableTh label="Created" sortKey="createdAt" width={110} />
+                    <th className={TH} style={{ width: 110 }}>Actions</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {buyers.map((buyer, index) => (
+                    <tr key={buyer.code || index} className="transition-colors hover:bg-muted/50">
+                      <td className={TD}>
+                        <span className="inline-block rounded-md bg-primary px-2.5 py-1 font-mono text-xs font-semibold tracking-wide text-primary-foreground">
+                          {buyer.code || '—'}
+                        </span>
+                      </td>
+                      <td className={TD}>
+                        <div className="truncate font-semibold text-foreground" title={buyer.buyerName || ''}>
+                          {buyer.buyerName || '—'}
+                        </div>
+                      </td>
+                      <td className={TD}>
+                        <div className="truncate font-medium text-foreground" title={buyer.contactPerson || ''}>
+                          {buyer.contactPerson || '—'}
+                        </div>
+                      </td>
+                      <td className={TD}>
+                        <div className="truncate text-foreground" title={buyer.retailer || ''}>
+                          {buyer.retailer || '—'}
+                        </div>
+                      </td>
+                      <td className={TD}>
+                        <span className="whitespace-nowrap text-muted-foreground">
+                          {formatDate(buyer.createdAt)}
+                        </span>
+                      </td>
+                      <td className={TD}>
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => handleViewDetails(buyer)}
+                            title="View Details"
+                            className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                          >
+                            <FiEye className="text-base" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleEditBuyer(buyer)}
+                            title="Edit Buyer"
+                            className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                          >
+                            <FiEdit2 className="text-base" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteBuyer(buyer)}
+                            title="Delete Buyer"
+                            className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-md text-destructive transition-colors hover:bg-destructive/10"
+                          >
+                            <FiTrash2 className="text-base" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
 
-        <Pagination page={page} pageSize={pageSize} totalCount={count} onPageChange={setPage} disabled={loading} />
+        <Pagination
+          page={page}
+          pageSize={pageSize}
+          totalCount={count}
+          onPageChange={setPage}
+          disabled={loading}
+        />
       </div>
 
-      {selectedBuyer && <BuyerDetailsModal buyer={selectedBuyer} onClose={() => setSelectedBuyer(null)} />}
+      {selectedBuyer && (
+        <BuyerDetailsModal buyer={selectedBuyer} onClose={() => setSelectedBuyer(null)} />
+      )}
     </div>
   );
 };

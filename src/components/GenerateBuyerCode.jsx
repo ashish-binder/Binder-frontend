@@ -1,14 +1,24 @@
 import { useState, useEffect } from "react";
-import { Input } from "@/components/ui/input";
-import { Field } from "@/components/ui/field";
-import { Button } from "@/components/ui/button";
-import { FormCard } from "@/components/ui/form-layout";
+import toast from "react-hot-toast";
 import { scrollToFirstError } from "@/utils/scrollToFirstError";
 import {
   getBuyerCodes,
   createBuyerCode,
   updateBuyerCode,
 } from "../services/integration";
+
+// Shared Tailwind class strings — flat/clean theme matching the StockSheet revamp.
+const CARD = "rounded-lg border border-[#e2e3e8] bg-card p-5 md:p-6";
+const LABEL =
+  "mb-2 block text-[11px] font-semibold uppercase tracking-wider text-muted-foreground";
+const CTRL =
+  "w-full rounded-md border border-[#e2e3e8] bg-card px-4 py-3 text-sm text-foreground outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/15";
+const CTRL_ERR =
+  "border-destructive focus:border-destructive focus:ring-destructive/20";
+const BACK_BTN =
+  "mb-5 inline-flex cursor-pointer items-center gap-1 rounded-md border border-[#e2e3e8] bg-white px-4 py-2 text-sm font-medium text-foreground/70 transition-colors hover:bg-[#f5f5f5] hover:shadow-lg";
+const PRIMARY_BTN =
+  "inline-flex cursor-pointer items-center justify-center gap-2 rounded-md bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground transition-all hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60";
 
 const INITIAL_FORM_DATA = {
   buyerName: "",
@@ -23,6 +33,18 @@ const extractItems = (payload) => {
   if (Array.isArray(payload?.data?.results)) return payload.data.results;
   return [];
 };
+
+const Field = ({ label, required, error, children }) => (
+  <div>
+    <label className={LABEL}>
+      {label} {required && <span className="text-primary">*</span>}
+    </label>
+    {children}
+    {error && (
+      <p className="mt-1.5 text-xs font-medium text-destructive">{error}</p>
+    )}
+  </div>
+);
 
 const GenerateBuyerCode = ({ onBack, initialData = null, onSaved }) => {
   const isEditMode = Boolean(initialData);
@@ -48,6 +70,8 @@ const GenerateBuyerCode = ({ onBack, initialData = null, onSaved }) => {
     setIsGenerating(false);
   }, [initialData]);
 
+  // Existing codes are still loaded (silently) to detect duplicate
+  // buyer + end-customer combinations before creating a new one.
   useEffect(() => {
     const loadBuyerCodes = async () => {
       try {
@@ -75,23 +99,14 @@ const GenerateBuyerCode = ({ onBack, initialData = null, onSaved }) => {
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
-    setFormData((prev) => ({
-      ...prev,
-      [name]: value,
-    }));
-    // Clear error when user starts typing
+    setFormData((prev) => ({ ...prev, [name]: value }));
     if (errors[name]) {
-      setErrors((prev) => ({
-        ...prev,
-        [name]: "",
-      }));
+      setErrors((prev) => ({ ...prev, [name]: "" }));
     }
   };
 
   const validateForm = () => {
     const newErrors = {};
-
-    // Trim whitespace and check if fields are empty
     const trimmedData = {
       buyerName: formData.buyerName?.trim() || "",
       contactPerson: formData.contactPerson?.trim() || "",
@@ -123,8 +138,7 @@ const GenerateBuyerCode = ({ onBack, initialData = null, onSaved }) => {
       .toString()
       .trim();
 
-    // Check if exact buyer + end customer combination exists
-    const existingEntry = existingCodes.find((item) => {
+    return existingCodes.find((item) => {
       const itemBuyerName = (item.buyerName || "").trim().toLowerCase();
       const itemRetailer = (item.retailer || "").trim().toLowerCase();
       const itemCode = (item.code || item.id || "").toString().trim();
@@ -135,95 +149,32 @@ const GenerateBuyerCode = ({ onBack, initialData = null, onSaved }) => {
         itemRetailer === normalizedRetailer
       );
     });
-
-    return existingEntry;
-  };
-
-  const generateBuyerCode = (buyerName, retailer) => {
-    try {
-      // Use codes already loaded from the API
-      const existingCodes = existingBuyerCodes;
-
-      // Normalize buyer name for comparison
-      const normalizedBuyerName = buyerName.trim().toLowerCase();
-
-      // Find all codes for this buyer (regardless of end customer)
-      const buyerCodes = existingCodes.filter((item) => {
-        const itemBuyerName = (item.buyerName || "").trim().toLowerCase();
-        return itemBuyerName === normalizedBuyerName;
-      });
-
-      if (buyerCodes.length > 0) {
-        // Buyer exists - increment the letter suffix
-        // Get the base number from the first code of this buyer
-        const firstCode = buyerCodes[0].code;
-        const baseNumber = parseInt(firstCode.replace(/[A-Z]/g, ""));
-
-        // Find all letter suffixes for this buyer
-        const letterSuffixes = buyerCodes.map((item) => {
-          const match = item.code.match(/[A-Z]+$/);
-          return match ? match[0] : "A";
-        });
-
-        // Find the highest letter (A, B, C, etc.)
-        let highestLetter = "A";
-        letterSuffixes.forEach((letter) => {
-          if (letter > highestLetter) {
-            highestLetter = letter;
-          }
-        });
-
-        // Increment the letter for new end customer
-        const nextLetter = String.fromCharCode(highestLetter.charCodeAt(0) + 1);
-
-        return `${baseNumber}${nextLetter}`;
-      } else {
-        // New buyer - increment the base number
-        // Find the highest base number across all codes
-        let maxBaseNumber = 100; // Start from 100, so first code will be 101
-
-        existingCodes.forEach((item) => {
-          const itemNumber = parseInt(item.code.replace(/[A-Z]/g, ""));
-          if (itemNumber > maxBaseNumber) {
-            maxBaseNumber = itemNumber;
-          }
-        });
-
-        // Increment for new buyer
-        const newBaseNumber = maxBaseNumber + 1;
-        return `${newBaseNumber}A`;
-      }
-    } catch (error) {
-      console.error("Error generating buyer code:", error);
-      // Fallback to a simple code
-      return `${Date.now().toString().slice(-3)}A`;
-    }
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     e.stopPropagation();
 
+    // Guard against rapid double-clicks: setIsGenerating(true) is async, so the
+    // button's disabled state may not apply before a second click fires. This
+    // ref-free check bails out immediately if a request is already in flight.
+    if (isGenerating) return;
     if (!validateForm()) return;
 
+    const existingEntry = checkIfCombinationExists(existingBuyerCodes);
+    if (existingEntry) {
+      setErrors({
+        buyerName: "This buyer-end customer combination already exists",
+        retailer: `Existing code: ${existingEntry.code}`,
+      });
+      toast.error(
+        `This buyer-end customer combination already exists (code ${existingEntry.code}). Use a different end customer or buyer name.`,
+      );
+      return;
+    }
+
+    setIsGenerating(true);
     try {
-      setIsGenerating(true);
-
-      // Check if this exact buyer + end customer combination already exists
-      const existingEntry = checkIfCombinationExists(existingBuyerCodes);
-
-      if (existingEntry) {
-        setIsGenerating(false);
-        setErrors({
-          buyerName: "This buyer-end customer combination already exists",
-          retailer: `Existing code: ${existingEntry.code}`,
-        });
-        alert(
-          `⚠️ This buyer-end customer combination already exists!\n\nExisting Code: ${existingEntry.code}\nBuyer: ${existingEntry.buyerName}\nEnd Customer: ${existingEntry.retailer}\n\nPlease use a different end customer or buyer name.`,
-        );
-        return;
-      }
-
       if (isEditMode) {
         const identifier = initialData?.id || initialData?.code;
         if (!identifier) {
@@ -244,6 +195,7 @@ const GenerateBuyerCode = ({ onBack, initialData = null, onSaved }) => {
           response?.data && typeof response.data === "object"
             ? response.data
             : response;
+
         const updatedBuyerData = {
           id: responseData?.id || initialData?.id || initialData?.code || "",
           code:
@@ -283,18 +235,17 @@ const GenerateBuyerCode = ({ onBack, initialData = null, onSaved }) => {
               : item;
           }),
         );
-        setIsGenerating(false);
 
+        toast.success("Buyer updated successfully.");
         if (typeof onSaved === "function") {
           onSaved(updatedBuyerData);
         } else {
-          alert("Buyer updated successfully.");
           onBack?.();
         }
         return;
       }
 
-      // Call backend API - code is auto-generated by the server
+      // Call backend API - code is auto-generated by the server.
       const response = await createBuyerCode({
         buyerName: formData.buyerName.trim(),
         buyerAddress: formData.buyerName.trim(), // Backend requires address; use buyer name as fallback
@@ -302,67 +253,33 @@ const GenerateBuyerCode = ({ onBack, initialData = null, onSaved }) => {
         retailer: formData.retailer.trim(),
       });
 
-      console.log("API response:", response);
-
-      if (response.status === "success" && response.data) {
-        const newCode = response.data.code;
-        console.log("Generated code from API:", newCode);
-
-        // Update localStorage cache
-        const newBuyerData = {
-          id: response.data.id || response.data.code || "",
-          code: newCode,
-          buyerName: formData.buyerName.trim(),
-          buyerAddress: formData.buyerName.trim(),
-          contactPerson: formData.contactPerson.trim(),
-          retailer: formData.retailer.trim(),
-          createdAt: new Date().toISOString(),
-        };
-
-        setExistingBuyerCodes((prev) => [...prev, newBuyerData]);
-
-        // Set the generated code to show success screen
-        setGeneratedCode(newCode);
-        setIsGenerating(false);
-      } else {
-        throw new Error(response.message || "Failed to create buyer code");
+      if (response?.status !== "success" || !response.data) {
+        throw new Error(response?.message || "Failed to create buyer code");
       }
+
+      const data = response.data;
+      const newBuyerData = {
+        id: data.id || data.code || "",
+        code: data.code,
+        buyerName: formData.buyerName.trim(),
+        buyerAddress: formData.buyerName.trim(),
+        contactPerson: formData.contactPerson.trim(),
+        retailer: formData.retailer.trim(),
+        createdAt: new Date().toISOString(),
+      };
+
+      setExistingBuyerCodes((prev) => [...prev, newBuyerData]);
+      setGeneratedCode(data.code);
+      toast.success(`Buyer code  generated successfully!`);
     } catch (error) {
       console.error("Error in form submission:", error);
+      toast.error(
+        error?.message ||
+          error?.data?.message ||
+          "An error occurred while generating the buyer code.",
+      );
+    } finally {
       setIsGenerating(false);
-      const errorMsg =
-        error.message ||
-        error.data?.message ||
-        "An error occurred while generating the buyer code.";
-      alert(`Error: ${errorMsg}\nPlease try again.`);
-    }
-  };
-
-  const copyToClipboard = async () => {
-    try {
-      await navigator.clipboard.writeText(generatedCode);
-      alert("Buyer code copied to clipboard!");
-    } catch (err) {
-      console.error("Failed to copy to clipboard:", err);
-      // Fallback for older browsers
-      const textArea = document.createElement("textarea");
-      textArea.value = generatedCode;
-      textArea.style.position = "fixed";
-      textArea.style.left = "-999999px";
-      textArea.style.top = "-999999px";
-      document.body.appendChild(textArea);
-      textArea.focus();
-      textArea.select();
-
-      try {
-        document.execCommand("copy");
-        alert("Buyer code copied to clipboard!");
-      } catch (copyErr) {
-        console.error("Fallback copy failed:", copyErr);
-        alert("Failed to copy code. Please copy manually: " + generatedCode);
-      }
-
-      document.body.removeChild(textArea);
     }
   };
 
@@ -373,70 +290,52 @@ const GenerateBuyerCode = ({ onBack, initialData = null, onSaved }) => {
     setIsGenerating(false);
   };
 
-  // Success screen - only show generated code
+  const shellStyle = {
+    fontFamily: "Inter, ui-sans-serif, system-ui, sans-serif",
+  };
+
+  // Success screen — only show the generated code.
   if (generatedCode && !isEditMode) {
     return (
-      <div className="fullscreen-content" style={{ overflowY: "auto" }}>
-        <div className="content-header">
-          <Button
-            variant="outline"
-            onClick={onBack}
-            type="button"
-            className="mb-6 bg-white"
-          >
-            ← Back to Code Creation
-          </Button>
-          <h1 className="fullscreen-title">
-            Buyer Code Generated Successfully!
-          </h1>
-        </div>
+      <div
+        className="min-h-full w-full overflow-y-auto bg-[#f3f4f6] py-9"
+        style={shellStyle}
+      >
+        <div className="mx-auto max-w-[95%] space-y-5">
+          <div>
+            <button type="button" onClick={onBack} className={BACK_BTN}>
+              ← Back to Code Creation
+            </button>
+            <h1 className="text-3xl font-bold text-foreground">
+              Buyer Code Generated
+            </h1>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Your unique buyer code is ready to use.
+            </p>
+          </div>
 
-        <div className="w-full max-w-3xl mx-auto">
-          <FormCard
-            className="rounded-2xl border-border bg-muted"
-            style={{ padding: "24px 20px" }}
-          >
-            <div className="flex flex-col items-center text-center">
-              <div className="w-20 h-20 bg-gradient-to-br from-green-500 to-green-600 text-white rounded-full flex items-center justify-center text-4xl font-bold mb-5">
+          <div className="mx-auto max-w-xl">
+            <div className={`${CARD} flex flex-col items-center text-center`}>
+              <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-full bg-green-100 text-3xl font-bold text-green-600">
                 ✓
               </div>
-
-              <div className="w-full" style={{ marginTop: "8px" }}>
-                <div className="text-sm font-semibold text-foreground/80 mb-3">
-                  Your Buyer Code
-                </div>
-
-                <FormCard
-                  className="rounded-xl border-border bg-card"
-                  style={{ padding: "20px 18px" }}
-                >
-                  <div className="flex items-center justify-center gap-3">
-                    <span
-                      className="text-primary font-black"
-                      style={{
-                        fontSize: "36px",
-                        fontFamily:
-                          'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, \"Liberation Mono\", \"Courier New\", monospace',
-                        letterSpacing: "3px",
-                        wordBreak: "break-word",
-                      }}
-                    >
-                      {generatedCode}
-                    </span>
-                  </div>
-                </FormCard>
+              <div className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Your Buyer Code
               </div>
-
-              <div
-                className="flex justify-center gap-3"
-                style={{ marginTop: "40px" }}
+              <div className="w-full rounded-lg border border-[#e2e3e8] bg-muted/40 px-6 py-5">
+                <span className="font-mono text-4xl font-black tracking-[0.15em] text-primary">
+                  {generatedCode}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={resetForm}
+                className={`${PRIMARY_BTN} mt-8`}
               >
-                <Button variant="default" onClick={resetForm} type="button">
-                  Generate Another Code
-                </Button>
-              </div>
+                Generate Another Code
+              </button>
             </div>
-          </FormCard>
+          </div>
         </div>
       </div>
     );
@@ -444,175 +343,86 @@ const GenerateBuyerCode = ({ onBack, initialData = null, onSaved }) => {
 
   // Form screen
   return (
-    <div className="fullscreen-content" style={{ overflowY: "auto" }}>
-      <div className="content-header">
-        <Button
-          variant="outline"
-          onClick={onBack}
-          type="button"
-          className="mb-6 bg-white"
-        >
-          ← Back to Code Creation
-        </Button>
-        <h1 className="fullscreen-title">
-          {isEditMode ? "Edit Buyer Code" : "Generate Buyer Code"}
-        </h1>
-        <p className="fullscreen-description">
-          {isEditMode
-            ? `Update buyer details for code ${initialData?.code || initialData?.id || ""}`.trim()
-            : "Fill in the buyer details to generate a unique buyer code"}
-        </p>
-      </div>
+    <div
+      className="min-h-full w-full overflow-y-auto bg-[#f3f4f6] py-9"
+      style={shellStyle}
+    >
+      <div className="mx-auto max-w-[95%] space-y-5">
+        <div>
+          <button type="button" onClick={onBack} className={BACK_BTN}>
+            ← Back to Code Creation
+          </button>
+          <h1 className="text-3xl font-bold text-foreground">
+            {isEditMode ? "Edit Buyer Code" : "Generate Buyer Code"}
+          </h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {isEditMode
+              ? `Update buyer details for code ${initialData?.code || initialData?.id || ""}`.trim()
+              : "Fill in the buyer details to generate a unique buyer code."}
+          </p>
+        </div>
 
-      <div className="w-full max-w-6xl mx-auto">
-        <FormCard
-          className="rounded-2xl border-border bg-muted"
-          style={{ padding: "24px 20px" }}
-        >
-          <form onSubmit={handleSubmit} noValidate>
-            <div
-              className="flex flex-wrap"
-              style={{ gap: "16px 12px", marginBottom: "16px" }}
-            >
-              <Field
-                label="BUYER NAME"
-                required
-                error={errors.buyerName}
-                width="md"
-              >
-                <Input
-                  type="text"
-                  id="buyerName"
-                  name="buyerName"
-                  value={formData.buyerName}
-                  onChange={handleInputChange}
-                  placeholder="Enter buyer name"
-                  required
-                  aria-invalid={!!errors.buyerName}
-                />
-              </Field>
+        <form onSubmit={handleSubmit} noValidate className={CARD}>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <Field label="Buyer Name" required error={errors.buyerName}>
+              <input
+                type="text"
+                id="buyerName"
+                name="buyerName"
+                value={formData.buyerName}
+                onChange={handleInputChange}
+                placeholder="Enter buyer name"
+                aria-invalid={!!errors.buyerName}
+                className={`${CTRL} ${errors.buyerName ? CTRL_ERR : ""}`}
+              />
+            </Field>
 
-              <Field
-                label="END CUSTOMER"
-                required
-                error={errors.retailer}
-                width="md"
-              >
-                <Input
-                  type="text"
-                  id="retailer"
-                  name="retailer"
-                  value={formData.retailer}
-                  onChange={handleInputChange}
-                  placeholder="Enter end customer name"
-                  required
-                  aria-invalid={!!errors.retailer}
-                />
-              </Field>
+            <Field label="End Customer" required error={errors.retailer}>
+              <input
+                type="text"
+                id="retailer"
+                name="retailer"
+                value={formData.retailer}
+                onChange={handleInputChange}
+                placeholder="Enter end customer name"
+                aria-invalid={!!errors.retailer}
+                className={`${CTRL} ${errors.retailer ? CTRL_ERR : ""}`}
+              />
+            </Field>
 
-              <Field
-                label="CONTACT PERSON"
-                required
-                error={errors.contactPerson}
-                width="md"
-              >
-                <Input
-                  type="text"
-                  id="contactPerson"
-                  name="contactPerson"
-                  value={formData.contactPerson}
-                  onChange={handleInputChange}
-                  placeholder="Enter contact person name"
-                  required
-                  aria-invalid={!!errors.contactPerson}
-                />
-              </Field>
-            </div>
-
-            <div className="flex justify-start">
-              <Button type="submit" disabled={isGenerating} size="default">
-                {isGenerating ? (
-                  <>
-                    <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin mr-2"></span>
-                    {isEditMode ? "Updating Buyer..." : "Generating Code..."}
-                  </>
-                ) : isEditMode ? (
-                  "Update Buyer"
-                ) : (
-                  "Generate Buyer Code"
-                )}
-              </Button>
-            </div>
-          </form>
-        </FormCard>
-
-        {existingBuyerCodes.length > 0 && (
-          <div
-            className="w-fit"
-            style={{
-              marginTop: "16px",
-              border: "1px solid rgb(34 197 94)",
-              borderRadius: "8px",
-              padding: "16px 20px",
-              maxWidth: "480px",
-            }}
-          >
-            <span
-              style={{
-                fontSize: "12px",
-                fontWeight: "500",
-                color: "#000",
-                letterSpacing: "0.5px",
-              }}
-            >
-              Existing codes
-            </span>
-            <div
-              style={{
-                display: "flex",
-                flexWrap: "wrap",
-                gap: "8px",
-                marginTop: "12px",
-              }}
-            >
-              {[...existingBuyerCodes].reverse().map((item, idx) => (
-                <div
-                  key={item.code + "-" + (item.createdAt || idx)}
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: "8px",
-                    padding: "6px 10px",
-                    backgroundColor: "var(--muted)",
-                    borderRadius: "6px",
-                    fontSize: "13px",
-                  }}
-                >
-                  <span
-                    style={{
-                      fontFamily: "ui-monospace, monospace",
-                      fontWeight: "600",
-                      color: "var(--foreground)",
-                    }}
-                  >
-                    {item.code || "N/A"}
-                  </span>
-                  <span
-                    style={{
-                      color: "var(--muted-foreground)",
-                      maxWidth: "140px",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    {item.buyerName || item.buyer_name || "N/A"}
-                  </span>
-                </div>
-              ))}
-            </div>
+            <Field label="Contact Person" required error={errors.contactPerson}>
+              <input
+                type="text"
+                id="contactPerson"
+                name="contactPerson"
+                value={formData.contactPerson}
+                onChange={handleInputChange}
+                placeholder="Enter contact person name"
+                aria-invalid={!!errors.contactPerson}
+                className={`${CTRL} ${errors.contactPerson ? CTRL_ERR : ""}`}
+              />
+            </Field>
           </div>
-        )}
+
+          <div className="mt-6 flex justify-start">
+            <button
+              type="submit"
+              disabled={isGenerating}
+              className={PRIMARY_BTN}
+            >
+              {isGenerating && (
+                <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />
+              )}
+              {isGenerating
+                ? isEditMode
+                  ? "Updating Buyer..."
+                  : "Generating Code..."
+                : isEditMode
+                  ? "Update Buyer"
+                  : "Generate Buyer Code"}
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   );

@@ -1,8 +1,15 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Button } from '@/components/ui/button';
+import toast from 'react-hot-toast';
 import Pagination from '@/components/ui/Pagination';
 import { getIPOs, clearCompletedIpos } from '../services/integration';
 import { useServerPagination } from '../hooks/useServerPagination';
+
+// Shared Tailwind class strings — flat/clean theme matching the StockSheet revamp.
+const TH =
+  'border-b border-[#e2e3e8] bg-muted px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-foreground whitespace-nowrap';
+const TD = 'border-b border-[#e2e3e8] px-4 py-3 align-middle text-sm text-foreground';
+const OUTLINE_DANGER_BTN =
+  'inline-flex cursor-pointer items-center justify-center gap-2 rounded-md border border-destructive/30 bg-white px-4 py-2.5 text-sm font-semibold text-destructive transition-colors hover:bg-destructive/10 disabled:cursor-not-allowed disabled:opacity-50';
 
 const extractItems = (payload) => {
   if (Array.isArray(payload)) return payload;
@@ -53,6 +60,7 @@ const CompletedIPOs = ({ onBack }) => {
   // Returns every completed IPO to active (server-side, tenant-wide).
   const handleClearTable = async () => {
     if (count === 0 || clearing) return;
+    const clearedCount = count;
     const ok = window.confirm(
       `Clear all ${count} completed IPO${count === 1 ? '' : 's'}? They will return to the Master IPO Sheet.`
     );
@@ -61,129 +69,111 @@ const CompletedIPOs = ({ onBack }) => {
     try {
       await clearCompletedIpos();
       setPage(1);
+      toast.success(
+        `${clearedCount} IPO${clearedCount === 1 ? '' : 's'} returned to the Master IPO Sheet.`
+      );
       refresh();
     } catch (err) {
       console.warn('Failed to clear completed IPOs:', err);
-      alert('Failed to clear. Please try again.');
+      toast.error('Failed to clear. Please try again.');
     } finally {
       setClearing(false);
     }
   };
 
-  const headerCellStyle = {
-    padding: '14px 20px',
-    textAlign: 'left',
-    fontWeight: 600,
-    fontSize: '13px',
-    color: 'var(--foreground)',
-  };
-
-  const bodyCellStyle = {
-    padding: '14px 20px',
-    verticalAlign: 'middle',
-    fontSize: '14px',
-    color: 'var(--foreground)',
-  };
-
   return (
-    <div className="fullscreen-content" style={{ overflowY: 'auto' }}>
-      <div className="content-header">
-        <Button
-          variant="outline"
-          onClick={onBack}
-          type="button"
-          className="mb-6 bg-white"
-        >
-          ← Back
-        </Button>
-        <h1 className="fullscreen-title">Completed IPOs</h1>
-        <p className="fullscreen-description">
-          All internal purchase orders that have been marked completed.
-        </p>
+    <div
+      className="min-h-full w-full overflow-y-auto bg-[#f3f4f6] py-9"
+      style={{
+        zoom: 0.9,
+        fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif',
+        '--accent': '#edeef1',
+      }}
+    >
+      <div className="mx-auto max-w-[95%] space-y-5">
+        {/* Header */}
+        <div>
+          <button
+            type="button"
+            onClick={onBack}
+            className="mb-5 inline-flex cursor-pointer items-center gap-1 rounded-md border border-[#e2e3e8] bg-white px-4 py-2 text-sm font-medium text-foreground/70 transition-colors hover:bg-[#f5f5f5] hover:shadow-lg"
+          >
+            ← Back
+          </button>
+          <h1 className="text-3xl font-bold text-foreground">Completed IPOs</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            All internal purchase orders that have been marked completed.
+          </p>
+        </div>
+
+        {/* Actions + count */}
+        <div className="flex flex-wrap items-center gap-4">
+          <span className="text-sm text-muted-foreground">
+            Total completed: <strong className="text-foreground">{count}</strong>
+          </span>
+          <button
+            type="button"
+            onClick={handleClearTable}
+            disabled={count === 0 || clearing}
+            className={OUTLINE_DANGER_BTN}
+          >
+            {clearing && (
+              <span className="h-4 w-4 animate-spin rounded-full border-2 border-destructive/30 border-t-destructive" />
+            )}
+            {clearing ? 'Clearing…' : 'Clear table'}
+          </button>
+        </div>
+
+        {loading && ipos.length === 0 ? (
+          <p className="p-12 text-center text-sm text-muted-foreground">Loading completed IPOs...</p>
+        ) : error ? (
+          <p className="p-12 text-center text-sm text-destructive">
+            Failed to load IPOs. Please try again.
+          </p>
+        ) : ipos.length === 0 ? (
+          <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-[#d5d6dc] bg-card px-6 py-16 text-center">
+            <p className="text-base text-muted-foreground">
+              No completed IPOs yet. Mark IPOs as completed in the Master IPO Sheet to see them here.
+            </p>
+          </div>
+        ) : (
+          <div
+            className="overflow-hidden rounded-lg border border-[#e2e3e8] bg-card"
+            style={{ opacity: loading ? 0.6 : 1, transition: 'opacity 0.15s' }}
+          >
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse text-sm" style={{ minWidth: 500 }}>
+                <thead>
+                  <tr>
+                    <th className={TH}>IPO Code</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {ipos.map((ipo, index) => (
+                    <tr key={ipo.id || index} className="transition-colors hover:bg-muted/50">
+                      <td className={TD}>
+                        <span className="inline-block rounded-md bg-primary px-2.5 py-1 font-mono text-xs font-semibold tracking-wide text-primary-foreground">
+                          {ipo.code || 'N/A'}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {!loading && !error && (
+          <Pagination
+            page={page}
+            pageSize={pageSize}
+            totalCount={count}
+            onPageChange={setPage}
+            disabled={loading}
+          />
+        )}
       </div>
-
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: '16px',
-          marginBottom: '16px',
-          flexWrap: 'wrap',
-        }}
-      >
-        <span className="text-sm text-muted-foreground">
-          Total completed: <strong className="text-foreground">{count}</strong>
-        </span>
-        <Button
-          variant="outline"
-          onClick={handleClearTable}
-          disabled={count === 0 || clearing}
-          type="button"
-          className="text-destructive hover:text-destructive"
-        >
-          {clearing ? 'Clearing…' : 'Clear table'}
-        </Button>
-      </div>
-
-      {loading && ipos.length === 0 ? (
-        <div style={{ textAlign: 'center', padding: '48px', color: 'var(--muted-foreground)' }}>
-          Loading completed IPOs...
-        </div>
-      ) : error ? (
-        <div style={{ textAlign: 'center', padding: '48px', color: 'var(--destructive)' }}>
-          Failed to load IPOs. Please try again.
-        </div>
-      ) : ipos.length === 0 ? (
-        <div style={{ textAlign: 'center', padding: '48px', color: 'var(--muted-foreground)' }}>
-          No completed IPOs yet. Mark IPOs as completed in the Master IPO Sheet to see them here.
-        </div>
-      ) : (
-        <div
-          style={{
-            border: '1px solid var(--border)',
-            borderRadius: 'var(--radius-lg)',
-            overflowX: 'auto',
-            backgroundColor: 'var(--card)',
-            opacity: loading ? 0.6 : 1,
-            transition: 'opacity 0.15s',
-          }}
-        >
-          <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '500px' }}>
-            <thead>
-              <tr
-                style={{
-                  backgroundColor: 'var(--muted)',
-                  borderBottom: '2px solid var(--border)',
-                }}
-              >
-                <th style={headerCellStyle}>IPO CODE</th>
-              </tr>
-            </thead>
-            <tbody>
-              {ipos.map((ipo, index) => (
-                <tr
-                  key={ipo.id || index}
-                  style={{
-                    borderBottom: index < ipos.length - 1 ? '1px solid var(--border)' : 'none',
-                  }}
-                >
-                  <td style={bodyCellStyle}>{ipo.code || 'N/A'}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {!loading && !error && (
-        <Pagination
-          page={page}
-          pageSize={pageSize}
-          totalCount={count}
-          onPageChange={setPage}
-          disabled={loading}
-        />
-      )}
     </div>
   );
 };

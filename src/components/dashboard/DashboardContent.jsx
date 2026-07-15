@@ -1,5 +1,5 @@
 import HomeContent from "../HomeContent";
-import TasksContent from "../TasksContent";
+import TasksContent from "../Tasks/TasksContent";
 import PurchaseContent from "../PurchaseContent";
 import GenerateBuyerCode from "../GenerateBuyerCode";
 import GenerateVendorCode from "../GenerateVendorCode";

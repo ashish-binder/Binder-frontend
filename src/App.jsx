@@ -1,5 +1,6 @@
 // src/App.jsx
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { Toaster } from 'react-hot-toast';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { LoadingProvider } from './context/LoadingContext';
 import GlobalLoadingOverlay from './components/GlobalLoadingOverlay';
@@ -139,6 +140,11 @@ function App() {
         </Routes>
         <GlobalChatbot />
         <GlobalLoadingOverlay />
+        <Toaster
+          position="top-right"
+          containerStyle={{ zIndex: 2147483000, top: 20, right: 20 }}
+          toastOptions={{ duration: 3500 }}
+        />
         </LoadingProvider>
       </AuthProvider>
     </Router>

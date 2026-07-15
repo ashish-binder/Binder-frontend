@@ -1,10 +1,16 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { FiEye, FiPrinter, FiTrash2 } from 'react-icons/fi';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { createPortal } from 'react-dom';
+import { FiEye, FiPrinter, FiTrash2, FiSearch, FiX } from 'react-icons/fi';
+import toast from 'react-hot-toast';
+import ThemedSelect from './IMS/StockSheet/ThemedSelect';
 import Pagination from '@/components/ui/Pagination';
 import { getCompanyEssentials, deleteCompanyEssential } from '../services/integration';
 import { useServerPagination } from '../hooks/useServerPagination';
+
+// Shared Tailwind class strings — flat/clean theme matching the StockSheet revamp.
+const TH =
+  'border-b border-[#e2e3e8] bg-muted px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-foreground whitespace-nowrap';
+const TD = 'border-b border-[#e2e3e8] px-4 py-3 align-middle text-sm text-foreground';
 
 const extractItems = (payload) => {
   if (Array.isArray(payload)) return payload;
@@ -26,6 +32,12 @@ const CATEGORY_OPTIONS = [
   'STATIONARY', 'PANTRY', 'MACHINERY', 'HOUSEKEEPING', 'ELECTRICALS',
   'HARDWARE_CHEMICALS', 'AUDIT_COMPLIANCE', 'IT', 'QC_TOOLS',
   'TRAVEL_EXPENSE', 'REPAIR', 'MAINTENANCE',
+];
+
+// react-select options for the category filter (raw value, prettified label).
+const CATEGORY_FILTER_OPTIONS = [
+  { value: 'ALL', label: 'All categories' },
+  ...CATEGORY_OPTIONS.map((cat) => ({ value: cat, label: cat.replace(/_/g, ' ') })),
 ];
 
 // Table column -> backend ordering field.
@@ -60,7 +72,7 @@ const normalizeEssential = (item) => ({
 });
 
 const formatDate = (dateString) => {
-  if (!dateString) return '';
+  if (!dateString) return '—';
   const date = new Date(dateString);
   if (Number.isNaN(date.getTime())) return dateString;
   return date.toLocaleDateString('en-IN', {
@@ -117,6 +129,92 @@ const resolveQuantityLabel = (item) => {
   return 'Quantity';
 };
 
+// Small label/value pair used inside the details popup.
+const Detail = ({ label, value }) => (
+  <div className="min-w-0">
+    <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+      {label}
+    </div>
+    <div className="mt-0.5 break-words text-sm text-foreground">
+      {hasValue(value) && value !== '' ? value : '—'}
+    </div>
+  </div>
+);
+
+// Essential Details popup — portalled to <body> so the shell's zoom doesn't distort it.
+const DetailsModal = ({ item, onClose }) => {
+  const itemField = resolveItemField(item);
+  const rows = [
+    ['Code', item.code],
+    ['Category', item.category ? item.category.replace(/_/g, ' ') : ''],
+    ['Department', item.department],
+    ['PO / Sr. No.', item.srNo],
+    [itemField.label, itemField.value],
+    ['Component Spec', item.componentSpec],
+    [resolveQuantityLabel(item), getQuantityDisplay(item)],
+    ['For', item.forField],
+    ['Taken By', item.takenByName],
+    ['Payment Method', formatPaymentMethod(item.paymentMethod)],
+    ['Entry Date', formatDate(item.date)],
+    ['Created', formatDate(item.createdAt)],
+    ['Remarks', item.remarks],
+  ].filter(([, value]) => hasValue(value) && value !== '');
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/50 p-4"
+      style={{ fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif' }}
+      onClick={onClose}
+    >
+      <div
+        className="flex max-h-[92vh] w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-[#e2e3e8] bg-card shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between border-b border-[#e2e3e8] px-6 py-4">
+          <div className="flex items-center gap-3">
+            <span className="rounded-md bg-primary px-2.5 py-1 font-mono text-xs font-semibold text-primary-foreground">
+              {item.code || '—'}
+            </span>
+            <h2 className="text-lg font-bold text-foreground">
+              {(item.category || 'Essential').replace(/_/g, ' ')}
+            </h2>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            title="Close"
+          >
+            <FiX className="text-lg" />
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="overflow-y-auto px-6 py-5">
+          <div className="grid grid-cols-1 gap-x-10 gap-y-4 sm:grid-cols-2">
+            {rows.map(([label, value]) => (
+              <Detail key={label} label={label} value={value} />
+            ))}
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="flex justify-end border-t border-[#e2e3e8] px-6 py-4">
+          <button
+            type="button"
+            onClick={onClose}
+            className="cursor-pointer rounded-md bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground transition-all hover:opacity-90"
+          >
+            Close
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+};
+
 const CompanyEssentialsMasterSheet = ({ onBack }) => {
   const [categoryFilter, setCategoryFilter] = useState('ALL');
   const [selectedItem, setSelectedItem] = useState(null);
@@ -168,11 +266,12 @@ const CompanyEssentialsMasterSheet = ({ onBack }) => {
     );
     if (!ok) return;
     if (!item.id) {
-      alert('Cannot delete: this record is missing an identifier.');
+      toast.error('Cannot delete: this record is missing an identifier.');
       return;
     }
     try {
       await deleteCompanyEssential(item.id);
+      toast.success(`${item.code || 'Record'} deleted.`);
       if (items.length === 1 && page > 1) {
         setPage(page - 1);
       } else {
@@ -180,7 +279,7 @@ const CompanyEssentialsMasterSheet = ({ onBack }) => {
       }
     } catch (err) {
       console.error('Failed to delete company essential:', err);
-      alert(
+      toast.error(
         err?.message ||
           err?.detail ||
           'Failed to delete this record. Please try again.'
@@ -252,7 +351,7 @@ const CompanyEssentialsMasterSheet = ({ onBack }) => {
     .code-pill {
       display: inline-block;
       padding: 4px 10px;
-      background: #111;
+      background: #f94d00;
       color: #fff;
       border-radius: 4px;
       font-family: ui-monospace, "Courier New", monospace;
@@ -312,7 +411,7 @@ const CompanyEssentialsMasterSheet = ({ onBack }) => {
 
     const printWindow = window.open('', '_blank', 'width=800,height=900');
     if (!printWindow) {
-      alert('Please allow pop-ups to print this record.');
+      toast.error('Please allow pop-ups to print this record.');
       return;
     }
     printWindow.document.open();
@@ -322,308 +421,182 @@ const CompanyEssentialsMasterSheet = ({ onBack }) => {
 
   const getSortIcon = (columnKey) => {
     if (sortField !== SORT_FIELDS[columnKey]) {
-      return <span style={{ marginLeft: '8px', fontSize: '12px', opacity: 0.7 }}>↕</span>;
+      return <span className="ml-1 text-[10px] opacity-40">↕</span>;
     }
-    return sortDir === 'asc' ? (
-      <span style={{ marginLeft: '8px', fontSize: '12px', color: 'var(--primary)' }}>↑</span>
-    ) : (
-      <span style={{ marginLeft: '8px', fontSize: '12px', color: 'var(--primary)' }}>↓</span>
+    return (
+      <span className="ml-1 text-[10px] text-primary">
+        {sortDir === 'asc' ? '↑' : '↓'}
+      </span>
     );
   };
 
-  const headerCellStyle = {
-    padding: '16px 20px',
-    textAlign: 'left',
-    fontWeight: 600,
-    fontSize: '13px',
-    color: 'var(--foreground)',
-    cursor: 'pointer',
-    userSelect: 'none',
-    whiteSpace: 'nowrap',
-  };
-
-  const bodyCellStyle = {
-    padding: '14px 20px',
-    verticalAlign: 'middle',
-    fontSize: '14px',
-    color: 'var(--foreground)',
-  };
-
-  const DetailsModal = ({ item, onClose }) => (
-    <div
-      style={{
-        position: 'fixed',
-        inset: 0,
-        backgroundColor: 'rgba(0, 0, 0, 0.7)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        zIndex: 1000,
-        padding: '20px',
-      }}
-      onClick={onClose}
+  const SortableTh = ({ label, sortKey, width }) => (
+    <th
+      className={`${TH} cursor-pointer select-none`}
+      style={{ width }}
+      onClick={() => handleSort(sortKey)}
     >
-      <div
-        style={{
-          backgroundColor: 'var(--card)',
-          borderRadius: 'var(--radius-lg)',
-          padding: '24px',
-          maxWidth: '640px',
-          width: '100%',
-          maxHeight: '90vh',
-          overflowY: 'auto',
-          border: '1px solid var(--border)',
-        }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-          <h2 style={{ fontSize: '20px', fontWeight: 600, color: 'var(--foreground)' }}>
-            Essential Details — {item.code || 'N/A'}
-          </h2>
-          <Button variant="ghost" size="icon" onClick={onClose} className="h-8 w-8">
-            ×
-          </Button>
-        </div>
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: '1fr 1fr',
-            gap: '14px 20px',
-          }}
-        >
-          {(() => {
-            const itemField = resolveItemField(item);
-            return [
-              ['Code', item.code],
-              ['Category', item.category],
-              ['Department', item.department],
-              ['PO / Sr. No.', item.srNo],
-              [itemField.label, itemField.value],
-              ['Component Spec', item.componentSpec],
-              [resolveQuantityLabel(item), getQuantityDisplay(item)],
-              ['For', item.forField],
-              ['Taken By', item.takenByName],
-              ['Payment Method', formatPaymentMethod(item.paymentMethod)],
-              ['Entry Date', formatDate(item.date)],
-              ['Created', formatDate(item.createdAt)],
-              ['Remarks', item.remarks],
-            ];
-          })()
-            .filter(([, value]) => hasValue(value) && value !== '')
-            .map(([label, value]) => (
-              <div key={label}>
-                <label
-                  style={{
-                    fontSize: '11px',
-                    fontWeight: 600,
-                    color: 'var(--muted-foreground)',
-                    display: 'block',
-                    marginBottom: '4px',
-                    textTransform: 'uppercase',
-                    letterSpacing: '0.5px',
-                  }}
-                >
-                  {label}
-                </label>
-                <span style={{ fontSize: '14px', color: 'var(--foreground)' }}>
-                  {value}
-                </span>
-              </div>
-            ))}
-        </div>
-      </div>
-    </div>
+      {label}
+      {getSortIcon(sortKey)}
+    </th>
   );
 
   return (
-    <div className="fullscreen-content" style={{ overflowY: 'auto' }}>
-      <div className="content-header">
-        <Button
-          variant="outline"
-          onClick={onBack}
-          type="button"
-          className="mb-6 bg-white"
-        >
-          ← Back
-        </Button>
-        <h1 className="fullscreen-title">Master Company Essentials Sheet</h1>
-        <p className="fullscreen-description">
-          View all company essentials records with category, item, payment and personnel details.
-        </p>
-      </div>
+    <div
+      className="min-h-full w-full overflow-y-auto bg-[#f3f4f6] py-9"
+      style={{
+        zoom: 0.9,
+        fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif',
+        '--accent': '#edeef1',
+      }}
+    >
+      <div className="mx-auto max-w-[95%] space-y-5">
+        {/* Header */}
+        <div>
+          <button
+            type="button"
+            onClick={onBack}
+            className="mb-5 inline-flex cursor-pointer items-center gap-1 rounded-md border border-[#e2e3e8] bg-white px-4 py-2 text-sm font-medium text-foreground/70 transition-colors hover:bg-[#f5f5f5] hover:shadow-lg"
+          >
+            ← Back
+          </button>
+          <h1 className="text-3xl font-bold text-foreground">Master Company Essentials Sheet</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            View all company essentials records with category, item, payment and personnel details.
+          </p>
+        </div>
 
-      <div style={{ maxWidth: '100%', width: '100%', marginBottom: '24px' }}>
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '16px',
-            marginBottom: '24px',
-            flexWrap: 'wrap',
-          }}
-        >
-          <div style={{ flex: 1, minWidth: '260px', maxWidth: '500px' }}>
-            <Input
+        {/* Search + filter + count */}
+        <div className="flex flex-wrap items-center gap-4">
+          <div className="relative min-w-65 max-w-md flex-1">
+            <FiSearch className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <input
               type="text"
               placeholder="Search by code or item description..."
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
+              className="w-full rounded-md border border-[#e2e3e8] bg-card py-3 pl-10 pr-4 text-sm text-foreground outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/15"
             />
           </div>
-          <select
-            value={categoryFilter}
-            onChange={(e) => setCategoryFilter(e.target.value)}
-            style={{
-              padding: '8px 12px',
-              border: '1px solid var(--border)',
-              borderRadius: 'var(--radius-md)',
-              backgroundColor: 'var(--background)',
-              color: 'var(--foreground)',
-              fontSize: '14px',
-              minWidth: '180px',
-            }}
-          >
-            <option value="ALL">All categories</option>
-            {CATEGORY_OPTIONS.map((cat) => (
-              <option key={cat} value={cat}>{cat}</option>
-            ))}
-          </select>
+          <div className="w-52">
+            <ThemedSelect
+              value={categoryFilter}
+              onChange={(value) => setCategoryFilter(value || 'ALL')}
+              options={CATEGORY_FILTER_OPTIONS}
+              placeholder="All categories"
+            />
+          </div>
           <div className="text-sm text-muted-foreground">
             Total: <strong className="text-foreground">{count}</strong>
           </div>
         </div>
 
         {loading && items.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '48px', color: 'var(--muted-foreground)' }}>
-            Loading company essentials...
-          </div>
+          <p className="p-12 text-center text-sm text-muted-foreground">Loading company essentials...</p>
         ) : error ? (
-          <div style={{ textAlign: 'center', padding: '48px', color: 'var(--destructive)' }}>
+          <p className="p-12 text-center text-sm text-destructive">
             Failed to load company essentials. Please try again.
-          </div>
+          </p>
         ) : items.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '48px', color: 'var(--muted-foreground)' }}>
-            No company essentials records found
-            {searchInput || categoryFilter !== 'ALL' ? ' matching your filters' : ''}.
+          <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-[#d5d6dc] bg-card px-6 py-16 text-center">
+            <p className="text-base text-muted-foreground">
+              No company essentials records found
+              {searchInput || categoryFilter !== 'ALL' ? ' matching your filters' : ''}.
+            </p>
           </div>
         ) : (
           <div
-            style={{
-              border: '1px solid var(--border)',
-              borderRadius: 'var(--radius-lg)',
-              overflowX: 'auto',
-              backgroundColor: 'var(--card)',
-              opacity: loading ? 0.6 : 1,
-              transition: 'opacity 0.15s',
-            }}
+            className="overflow-hidden rounded-lg border border-[#e2e3e8] bg-card"
+            style={{ opacity: loading ? 0.6 : 1, transition: 'opacity 0.15s' }}
           >
-            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '1280px' }}>
-              <thead>
-                <tr
-                  style={{
-                    backgroundColor: 'var(--muted)',
-                    borderBottom: '2px solid var(--border)',
-                  }}
-                >
-                  <th onClick={() => handleSort('code')} style={headerCellStyle}>
-                    CODE {getSortIcon('code')}
-                  </th>
-                  <th onClick={() => handleSort('category')} style={headerCellStyle}>
-                    CATEGORY {getSortIcon('category')}
-                  </th>
-                  <th onClick={() => handleSort('itemDescription')} style={headerCellStyle}>
-                    ITEM {getSortIcon('itemDescription')}
-                  </th>
-                  <th onClick={() => handleSort('quantity')} style={headerCellStyle}>
-                    QTY {getSortIcon('quantity')}
-                  </th>
-                  <th onClick={() => handleSort('takenByName')} style={headerCellStyle}>
-                    TAKEN BY {getSortIcon('takenByName')}
-                  </th>
-                  <th onClick={() => handleSort('paymentMethod')} style={headerCellStyle}>
-                    PAYMENT {getSortIcon('paymentMethod')}
-                  </th>
-                  <th onClick={() => handleSort('date')} style={headerCellStyle}>
-                    DATE {getSortIcon('date')}
-                  </th>
-                  <th style={{ ...headerCellStyle, cursor: 'default' }}>ACTIONS</th>
-                </tr>
-              </thead>
-              <tbody>
-                {items.map((item, index) => (
-                  <tr
-                    key={item.id || `${item.code}-${index}`}
-                    style={{
-                      borderBottom: index < items.length - 1 ? '1px solid var(--border)' : 'none',
-                      transition: 'background-color 0.15s',
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.backgroundColor = 'var(--muted)';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.backgroundColor = 'transparent';
-                    }}
-                  >
-                    <td style={{ ...bodyCellStyle, borderRight: '1px solid var(--border)' }}>
-                      <span
-                        style={{
-                          display: 'inline-block',
-                          padding: '6px 12px',
-                          backgroundColor: 'var(--primary)',
-                          color: 'var(--primary-foreground)',
-                          borderRadius: 'var(--radius-md)',
-                          fontSize: '13px',
-                          fontWeight: 600,
-                          fontFamily: 'var(--font-mono)',
-                          letterSpacing: '0.5px',
-                        }}
-                      >
-                        {item.code || 'N/A'}
-                      </span>
-                    </td>
-                    <td style={bodyCellStyle}>{item.category || '—'}</td>
-                    <td style={bodyCellStyle}>
-                      <strong style={{ fontWeight: 600 }}>{item.itemDescription || '—'}</strong>
-                    </td>
-                    <td style={bodyCellStyle}>{getQuantityDisplay(item) || '—'}</td>
-                    <td style={bodyCellStyle}>{item.takenByName || '—'}</td>
-                    <td style={bodyCellStyle}>{formatPaymentMethod(item.paymentMethod) || '—'}</td>
-                    <td style={bodyCellStyle}>{formatDate(item.date)}</td>
-                    <td style={bodyCellStyle}>
-                      <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => setSelectedItem(item)}
-                          title="View details"
-                          className="h-8 w-8"
-                        >
-                          <FiEye style={{ fontSize: '16px' }} />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handlePrint(item)}
-                          title="Print this record"
-                          className="h-8 w-8"
-                        >
-                          <FiPrinter style={{ fontSize: '16px' }} />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleDelete(item)}
-                          title="Delete this record"
-                          className="h-8 w-8 text-destructive hover:text-destructive"
-                        >
-                          <FiTrash2 style={{ fontSize: '16px' }} />
-                        </Button>
-                      </div>
-                    </td>
+            <div className="overflow-x-auto">
+              <table className="w-full table-fixed border-collapse text-sm" style={{ minWidth: 1240 }}>
+                <thead>
+                  <tr>
+                    <SortableTh label="Code" sortKey="code" width={190} />
+                    <SortableTh label="Category" sortKey="category" width={150} />
+                    <SortableTh label="Item" sortKey="itemDescription" width={260} />
+                    <SortableTh label="Qty" sortKey="quantity" width={110} />
+                    <SortableTh label="Taken By" sortKey="takenByName" width={160} />
+                    <SortableTh label="Payment" sortKey="paymentMethod" width={140} />
+                    <SortableTh label="Date" sortKey="date" width={110} />
+                    <th className={TH} style={{ width: 120 }}>Actions</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {items.map((item, index) => (
+                    <tr
+                      key={item.id || `${item.code}-${index}`}
+                      className="transition-colors hover:bg-muted/50"
+                    >
+                      <td className={TD}>
+                        <span className="inline-block max-w-full whitespace-normal break-all rounded-md bg-primary px-2.5 py-1 font-mono text-xs font-semibold leading-tight tracking-wide text-primary-foreground">
+                          {item.code || 'N/A'}
+                        </span>
+                      </td>
+                      <td className={TD}>
+                        <div className="truncate text-foreground" title={item.category || ''}>
+                          {item.category ? item.category.replace(/_/g, ' ') : '—'}
+                        </div>
+                      </td>
+                      <td className={TD}>
+                        <div className="truncate font-semibold text-foreground" title={item.itemDescription || ''}>
+                          {item.itemDescription || '—'}
+                        </div>
+                      </td>
+                      <td className={TD}>
+                        <span className="whitespace-nowrap text-foreground">
+                          {getQuantityDisplay(item) || '—'}
+                        </span>
+                      </td>
+                      <td className={TD}>
+                        <div className="truncate text-foreground" title={item.takenByName || ''}>
+                          {item.takenByName || '—'}
+                        </div>
+                      </td>
+                      <td className={TD}>
+                        <span className="whitespace-nowrap text-foreground">
+                          {formatPaymentMethod(item.paymentMethod) || '—'}
+                        </span>
+                      </td>
+                      <td className={TD}>
+                        <span className="whitespace-nowrap text-muted-foreground">
+                          {formatDate(item.date)}
+                        </span>
+                      </td>
+                      <td className={TD}>
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => setSelectedItem(item)}
+                            title="View details"
+                            className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                          >
+                            <FiEye className="text-base" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handlePrint(item)}
+                            title="Print this record"
+                            className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                          >
+                            <FiPrinter className="text-base" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDelete(item)}
+                            title="Delete this record"
+                            className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-md text-destructive transition-colors hover:bg-destructive/10"
+                          >
+                            <FiTrash2 className="text-base" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
 
