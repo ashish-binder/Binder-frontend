@@ -788,6 +788,7 @@ const HoverPanel = ({
         <div
           className="hover-panel-group"
           ref={hoverPanelRef}
+          onMouseLeave={() => setHoveredSubmenu(null)}
         >
           <div className="hover-panel">
             <div className="hover-panel-column">
