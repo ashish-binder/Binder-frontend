@@ -1,7 +1,17 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { Search, Plus, ChevronDown } from 'lucide-react';
+import Pagination from '@/components/ui/Pagination';
 import { getInwardStoreSheets } from '../services/integration';
-import { useLoading } from '../context/LoadingContext';
+import { useServerPagination } from '../hooks/useServerPagination';
+
+const extractItems = (payload) => {
+  if (Array.isArray(payload)) return payload;
+  if (Array.isArray(payload?.results)) return payload.results;
+  if (Array.isArray(payload?.data)) return payload.data;
+  return [];
+};
+const getCount = (payload, fallback) =>
+  Number.isFinite(payload?.count) ? payload.count : fallback;
 
 // Compact table controls — flat/clean theme matching the StockSheet revamp.
 const TH =
@@ -9,34 +19,30 @@ const TH =
 const TD = 'border-b border-[#e2e3e8] px-3 py-2 align-middle text-foreground';
 
 const InwardStoreSheetDatabase = ({ onBack, onOpenForm }) => {
-  const [sheets, setSheets] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState('');
   const [expandedId, setExpandedId] = useState(null);
-  const { showLoading, hideLoading } = useLoading();
 
-  const loadSheets = async () => {
-    setLoading(true);
-    showLoading();
-    try {
-      const params = {};
-      if (search.trim()) params.search = search.trim();
-      const data = await getInwardStoreSheets(params);
-      const results = data?.results || data || [];
-      setSheets(Array.isArray(results) ? results : []);
-    } catch {
-      setSheets([]);
-    } finally {
-      setLoading(false);
-      hideLoading();
-    }
-  };
+  const fetchPage = useCallback(({ page, pageSize, search }) => {
+    const params = { page, page_size: pageSize };
+    if (search) params.search = search;
+    return getInwardStoreSheets(params).then((res) => {
+      const results = extractItems(res);
+      return { results, count: getCount(res, results.length) };
+    });
+  }, []);
 
-  useEffect(() => { loadSheets(); }, []);
+  const {
+    items: sheets,
+    count,
+    page,
+    setPage,
+    pageSize,
+    loading,
+    searchInput,
+    setSearchInput,
+  } = useServerPagination(fetchPage, { pageSize: 10 });
 
   const handleSearch = (e) => {
     e.preventDefault();
-    loadSheets();
   };
 
   const formatDate = (iso) => {
@@ -116,8 +122,8 @@ const InwardStoreSheetDatabase = ({ onBack, onOpenForm }) => {
               <input
                 type="text"
                 placeholder="Search by UIN, challan no, invoice no..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
                 className="w-full rounded-md border border-[#e2e3e8] bg-card py-3 pl-10 pr-4 text-sm text-foreground outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/15"
               />
             </div>
@@ -130,7 +136,7 @@ const InwardStoreSheetDatabase = ({ onBack, onOpenForm }) => {
           </form>
         </div>
 
-        {loading ? (
+        {loading && sheets.length === 0 ? (
           <p className="p-6 text-sm text-muted-foreground">Loading...</p>
         ) : sheets.length === 0 ? (
           <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-[#d5d6dc] bg-card px-6 py-16 text-center">
@@ -281,6 +287,14 @@ const InwardStoreSheetDatabase = ({ onBack, onOpenForm }) => {
             })}
           </div>
         )}
+
+        <Pagination
+          page={page}
+          pageSize={pageSize}
+          totalCount={count}
+          onPageChange={setPage}
+          disabled={loading}
+        />
       </div>
     </div>
   );

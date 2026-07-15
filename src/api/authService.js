@@ -75,6 +75,7 @@ const refreshToken = async () => {
   try {
     const response = await fetch(`${API_BASE_URL}auth/token/refresh/`, {
       method: 'POST',
+      credentials: 'include',
       headers: {
         'Content-Type': 'application/json',
       },
@@ -116,6 +117,9 @@ const apiRequest = async (endpoint, options = {}) => {
   }
   
   const config = {
+    // Send cookies so httpOnly auth cookies flow once cookie-mode is enabled.
+    // Harmless in Bearer mode (there simply are no auth cookies to send).
+    credentials: 'include',
     ...options,
     headers: {
       ...defaultHeaders,
@@ -314,23 +318,26 @@ export const setPassword = async (token, password, passwordConfirm) => {
 };
 
 /**
- * Logout user
+ * Logout user.
+ * Always calls the backend so it can invalidate the session server-side
+ * (blacklist the refresh token + reject all outstanding access tokens),
+ * then clears local tokens no matter what the network did.
  */
 export const logout = async () => {
   const refresh = getRefreshToken();
-  
-  if (refresh) {
-    try {
-      await apiRequest('auth/logout/', {
-        method: 'POST',
-        body: JSON.stringify({ refresh }),
-      });
-    } catch (error) {
-      console.error('Logout error:', error);
-    }
+
+  try {
+    await apiRequest('auth/logout/', {
+      method: 'POST',
+      // Send the refresh token when we still have it (Bearer mode). In cookie
+      // mode the backend reads it from the httpOnly cookie instead.
+      body: JSON.stringify(refresh ? { refresh } : {}),
+    });
+  } catch (error) {
+    console.error('Logout error:', error);
+  } finally {
+    clearTokens();
   }
-  
-  clearTokens();
 };
 
 /**
@@ -408,11 +415,15 @@ export const getFilteredActivityLogs = async (filters = {}) => {
   if (filters.entity_type) params.append('entity_type', filters.entity_type);
   if (filters.from_date) params.append('from_date', filters.from_date);
   if (filters.to_date) params.append('to_date', filters.to_date);
+  if (filters.page) params.append('page', filters.page);
+  if (filters.page_size) params.append('page_size', filters.page_size);
   const query = params.toString();
   const response = await apiRequest(`auth/tenant-activity-logs/${query ? '?' + query : ''}`);
   const data = await response.json();
   if (!response.ok) throw new Error(data?.detail || data?.message || 'Failed to load activity logs');
-  return Array.isArray(data) ? data : data?.results || data?.data || [];
+  const results = Array.isArray(data) ? data : data?.results || data?.data || [];
+  const count = Number.isFinite(data?.count) ? data.count : results.length;
+  return { results, count };
 };
 
 export const updateTenantFeatureOverrides = async (tenantId, items) => {

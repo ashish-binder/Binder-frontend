@@ -537,6 +537,34 @@ singles). Active only when all members' sizes are filled.
 
 **Verified:** `npm run build` green; no `no-undef`.
 
+### Change 15 — Cut/Sew batch: dates, club rules, popup, reopen fix — ✅ PARTLY DONE
+Done this pass:
+- **Removed start/completion date fields** (+ their `*`) in the Cut/Sew reuse
+  (`WorkOrdersSection` gates `WorkOrderDateFields` on `!restrictType`). Still shown in BOM.
+- **Removed the club "same-plan" validation** — any 2+ components can now club
+  (reverses Change 13's rule, per Vikram: "no size/work-order justification, just save").
+- **Club naming** → `Club N cutting` / `Club N sewing` (for inward/outward).
+- **Removed the isolation/club intro paragraph** from the process section.
+- **Fixed data-not-visible-on-reopen**: `SpecSection` now re-selects a valid component
+  when the list loads async (`useEffect` on `names`).
+- **Forward/assembly popup shows the club/single breakdown** (which components merge /
+  stay single) — cutting & sewing.
+
+Second pass (answers A/B/C):
+- **A — club/single → DB**: confirmed already persisted — `buildCutSewSlice` includes
+  `processAssignments` (clubs+singles) and is saved to the `cutsew` section + draft on
+  the cutting/sewing save buttons. Inward/outward forms can read it from there.
+- **B — honest "Saved"**: the Save button is now green **only when the step's data is
+  COMPLETE and unchanged since last save/load** ("Save" when incomplete or edited).
+  Driven by a data signature snapshot (`stepSig`/`savedSigRef`) + a completeness check
+  (all CUTTING/SEWING WOs have size L/W/unit; all FINISHING WOs have process+type).
+  Reopening a saved IPC shows "Saved" without re-clicking.
+- **C — Save beside Next**: moved the Save button out of the top tab bar into each
+  section's **bottom action row** (beside Next / the forward button). Sewing's
+  **"Save & Move to IPC Assembly"** is itself the save there.
+- **D — WASTAGE/front-panel save**: the reopen-display fix likely covered it; awaiting
+  Vikram's retest for confirmation of the specific field.
+
 ### Change 14 — Finishing rebuilt to per-component / per-FINISHING-WO — ✅ DONE
 Supersedes the earlier IPC-level finishing table (Change 6/13). Finishing now mirrors
 Cutting/Sewing: **SELECT a component that has a FINISHING work order** (declared in
@@ -579,6 +607,89 @@ BOM & WO) → fill **3 fields per work order**:
   completed IPC (draft is saved on every step) surfaces there; nothing new needed.
 
 **Verified:** `npm run build` green; no `no-undef`.
+
+### Change 18 — Starting / Completion dates: drop the mandatory check — ✅ DONE
+Follow-up to Change 17: after the date inputs were removed, saving still failed because
+`src/utils/validationSchemas.js` spread `WORK_ORDER_DATE_FIELDS = ['startDate',
+'dateOfCompletion']` into the **`required`** list of every WORK_ORDER schema (13 of
+them). Emptied both `WORK_ORDER_DATE_FIELDS` and `WORK_ORDER_DATE_LABELS` so every
+`...WORK_ORDER_DATE_*` spread becomes a no-op — dates no longer required, other required
+fields untouched. **Build green.**
+
+### Change 17 — Starting / Completion dates removed (BOM & WO) — ✅ DONE
+Per Vikram: remove the work-order **"starting date *" / "completion date *"** pair from
+the IPC Spec.
+- Removed the `<WorkOrderDateFields>` block from `WorkOrdersSection.jsx` (it was the
+  only render site, shown on BOM & WO where `!restrictType`) and its import.
+- **Deleted** the now-orphaned `components/WorkOrderDateFields.jsx` component.
+- Dropped `startDate: ''` / `dateOfCompletion: ''` from both WO scaffolds in
+  `GenerateFactoryCode.jsx` and from `initializers.js`. No validation referenced them
+  (the `*` was hardcoded in the component, not enforced). **Build green.**
+
+### Change 16 — PROCUREMENT DATE removed (Factory Code) — ✅ DONE
+Per Vikram: field made non-mandatory then fully removed from the IPC / Factory-Code
+BOM & WO. Scope = **GenerateFactoryCode only** (IMS StockSheet left untouched, by his
+choice).
+- **UI**: date field deleted from every raw-material spec — `Step2.jsx` (Trim &
+  Accessory inline), `FabricSpec`, `FoamSpec`, `FiberSpec`, `YarnSpec`,
+  `StitchingThreadSpec`.
+- **Handlers/props**: removed `handleProcurementDateChange` + `todayDate` from Step2 and
+  every spec signature + all pass-throughs into the Foam/Fiber table sub-specs (those
+  never used them). Dropped now-unused `validateField` prop from Step2 and unused
+  `Input`/`Field` imports where they fell away.
+- **Validation**: removed the "Procurement Date is required/invalid/past" checks from
+  `validateField`, `validateStep2`, and `validateComponentMaterials`; `isMaterialComplete`
+  no longer requires it; removed the now-unused `today` locals.
+- **Data model**: dropped `procurementDate: ''` from the WO/material scaffolds
+  (`initializers.js` + the wizard add-material path). Old saved rows may still carry the
+  key harmlessly; nothing reads it. **Build green.**
+
+### Change 15 — Finishing = repeatable process GROUPS — ✅ DONE
+(Supersedes an earlier wrong take where only the Process field became multi-select —
+rolled back.)
+- Each FINISHING work order now holds a **list of finishing-process groups**. One group
+  = **{ FINISHING PROCESS (select/type), PROCESS TYPE (multi-select), REMARKS }**, and a
+  **"+ Add finishing process"** button appends another group; each group past the first
+  gets a **Remove**. Process Type options track that group's own process
+  (`FINISHING_TYPE_MAP[g.process]`).
+- New field **`finishingGroups: []`** on the work order (initializers + wizard WO
+  scaffold + `buildCutSewSlice` persist). Legacy flat `finishingProcess`/`finishingTypes`/
+  `remarks` are still read via `getFinishingGroups(wo)`, which wraps them into one group.
+- Completeness (`isFinishingComplete` + Step1's Finishing gate): a WO is done when it has
+  **≥1 group** and **every group** has a process + **≥1 type** (remark optional).
+  **Build green.**
+
+### Change 14 — Nav swap + trustworthy selector badges — ✅ DONE
+- **Nav swap** (Step1 bottom row): the two actions were reversed.
+  - **Next →** now advances to the **Finishing** section (`saveAndGo('finishing')`).
+  - **Sew as IPC & Forward to Pack →** now finalises and returns to the **IPC
+    selector** (packaging) via `onNext`/`handleNext`. Still shown only on Sewing ·
+    Process, between Previous and Next.
+- **Selector "saved" badges now reflect the DB, not just the in-session flags.**
+  `getIpcCompletion` used to read only `ipcSavedState.{raw,cut,artwork}`. Those flags
+  are fragile — `raw` needs the whole BOM saved in one session (the in-session Set
+  resets on reload) and `cut` gets reset to false by unrelated edits. So a reloaded
+  IPC with all data saved could show BOM & WO ○ / Cut & Sew ○ while only Artwork ✓.
+  Fixed by **also deriving completion from the persisted draft data** and OR-ing it in:
+  - **raw** = flag **OR** every component that has materials is in the persisted
+    `rawSavedComponents`.
+  - **cut** = flag **OR** every CUTTING/SEWING work order is sized **and** every
+    FINISHING work order is filled (`isFinishingComplete`).
+  - **artwork** = unchanged (its flag round-trips reliably).
+  This is the same completeness bar the save handlers use, just recomputed from
+  persisted data — so it can't green a genuinely-incomplete section (the Proceed-to-
+  Packaging gate stays honest). **Build green.**
+
+### Change 13 — "Sew as IPC & Forward to Pack →" into the bottom nav — ✅ DONE
+- Step1 now owns its own bottom navigation row: **[← Previous] · [Sew as IPC &
+  Forward to Pack →] · [Next →]**. The middle button only appears while viewing the
+  **Sewing · Process** section (`activeTab === 'sewing' && sewingSection === 'process'`)
+  and runs `saveAndGo('finishing')` (save → open Finishing tab).
+- Removed the sewing `finalAction` from `ProcessSection`'s in-card action row (only the
+  "Save & Move to IPC Assembly" mode button remains there).
+- Orchestrator: the `currentStep === 2` bottom-nav block is now `null` (Step1 renders
+  its own); `onPrev={handlePrevious}` / `onNext={handleNext}` passed into Step1.
+- **Build green.**
 
 ### Change 12 — Process flow polish — ✅ DONE
 - Cutting forward button → **"Save & Forward to Sewing Line."**

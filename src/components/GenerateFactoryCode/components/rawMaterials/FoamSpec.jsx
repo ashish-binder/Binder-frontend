@@ -1,7 +1,6 @@
 // FoamSpec — extracted from Step2.jsx (BOM & WIP). Pure presentational; all
 // state lives in the GenerateFactoryCode orchestrator and arrives via props.
 import { Field } from '@/components/ui/field';
-import { Input } from '@/components/ui/input';
 import SearchableDropdown from '../SearchableDropdown';
 // Foam table-type spec blocks (one file each)
 import FoamEva from '../foamTypes/FoamEva';
@@ -18,8 +17,6 @@ const FoamSpec = ({
   actualIndex,
   errors,
   handleRawMaterialChange,
-  handleProcurementDateChange,
-  todayDate,
   mergeOptions,
   addCustomOption,
 }) => (
@@ -279,8 +276,6 @@ const FoamSpec = ({
                         actualIndex={actualIndex}
                         errors={errors}
                         handleRawMaterialChange={handleRawMaterialChange}
-                        handleProcurementDateChange={handleProcurementDateChange}
-                        todayDate={todayDate}
                         mergeOptions={mergeOptions}
                         addCustomOption={addCustomOption}
                       />
@@ -295,8 +290,6 @@ const FoamSpec = ({
     actualIndex={actualIndex}
     errors={errors}
     handleRawMaterialChange={handleRawMaterialChange}
-    handleProcurementDateChange={handleProcurementDateChange}
-    todayDate={todayDate}
     mergeOptions={mergeOptions}
     addCustomOption={addCustomOption}
   />
@@ -309,8 +302,6 @@ const FoamSpec = ({
     actualIndex={actualIndex}
     errors={errors}
     handleRawMaterialChange={handleRawMaterialChange}
-    handleProcurementDateChange={handleProcurementDateChange}
-    todayDate={todayDate}
     mergeOptions={mergeOptions}
     addCustomOption={addCustomOption}
   />
@@ -324,8 +315,6 @@ const FoamSpec = ({
     actualIndex={actualIndex}
     errors={errors}
     handleRawMaterialChange={handleRawMaterialChange}
-    handleProcurementDateChange={handleProcurementDateChange}
-    todayDate={todayDate}
     mergeOptions={mergeOptions}
     addCustomOption={addCustomOption}
   />
@@ -340,8 +329,6 @@ const FoamSpec = ({
     actualIndex={actualIndex}
     errors={errors}
     handleRawMaterialChange={handleRawMaterialChange}
-    handleProcurementDateChange={handleProcurementDateChange}
-    todayDate={todayDate}
     mergeOptions={mergeOptions}
     addCustomOption={addCustomOption}
   />
@@ -358,8 +345,6 @@ const FoamSpec = ({
     actualIndex={actualIndex}
     errors={errors}
     handleRawMaterialChange={handleRawMaterialChange}
-    handleProcurementDateChange={handleProcurementDateChange}
-    todayDate={todayDate}
     mergeOptions={mergeOptions}
     addCustomOption={addCustomOption}
   />
@@ -375,8 +360,6 @@ const FoamSpec = ({
     actualIndex={actualIndex}
     errors={errors}
     handleRawMaterialChange={handleRawMaterialChange}
-    handleProcurementDateChange={handleProcurementDateChange}
-    todayDate={todayDate}
     mergeOptions={mergeOptions}
     addCustomOption={addCustomOption}
   />
@@ -392,28 +375,10 @@ const FoamSpec = ({
                         actualIndex={actualIndex}
                         errors={errors}
                         handleRawMaterialChange={handleRawMaterialChange}
-                        handleProcurementDateChange={handleProcurementDateChange}
-                        todayDate={todayDate}
                         mergeOptions={mergeOptions}
                         addCustomOption={addCustomOption}
                       />
                     )}
-                    <div className="w-full max-w-sm" style={{ marginTop: '20px', paddingTop: '16px', borderTop: '1px solid var(--border)' }}>
-                      <Field
-                        label="PROCUREMENT DATE"
-                        required
-                        width="sm"
-                        error={errors[`rawMaterial_${actualIndex}_procurementDate`]}
-                      >
-                        <Input
-                          type="date"
-                          min={todayDate}
-                          value={material.procurementDate || ''}
-                          aria-invalid={errors[`rawMaterial_${actualIndex}_procurementDate`] ? true : undefined}
-                          onChange={(e) => handleProcurementDateChange(actualIndex, e.target.value)}
-                        />
-                      </Field>
-                    </div>
 
                   </div>
                 </div>

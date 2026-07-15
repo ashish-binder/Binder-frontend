@@ -2011,7 +2011,8 @@ const GenerateFactoryCode = ({
         .map((c) => ({ ...c, components: c.components.filter((n) => !componentNames.includes(n)) }))
         .filter((c) => c.components.length >= 2);
       kept.push({ id: [...componentNames].sort().join('|'), components: [...componentNames] });
-      const clubs = kept.map((c, i) => ({ ...c, label: `Club ${i + 1}` }));
+      // Naming convention used downstream (inward/outward): "Club N <kind>".
+      const clubs = kept.map((c, i) => ({ ...c, label: `Club ${i + 1} ${kind}` }));
       return withUpdatedIpcSavedState({ ...stepData, processAssignments: { ...pa, [kind]: { clubs } } }, { cut: false });
     });
   };
@@ -2021,7 +2022,7 @@ const GenerateFactoryCode = ({
       const pa = stepData.processAssignments || {};
       const clubs = (pa[kind]?.clubs || [])
         .filter((c) => c.id !== clubId)
-        .map((c, i) => ({ ...c, label: `Club ${i + 1}` }));
+        .map((c, i) => ({ ...c, label: `Club ${i + 1} ${kind}` }));
       return withUpdatedIpcSavedState({ ...stepData, processAssignments: { ...pa, [kind]: { clubs } } }, { cut: false });
     });
   };
@@ -2050,7 +2051,19 @@ const GenerateFactoryCode = ({
   const isFinishingComplete = (stepData) => {
     const finWos = (stepData?.rawMaterials || []).flatMap((m) =>
       (m.workOrders || []).filter((wo) => wo?.workOrder === 'FINISHING'));
-    return finWos.every((wo) => wo.finishingProcess?.toString().trim() && (wo.finishingTypes || []).length > 0);
+    // Each FINISHING WO carries one or more finishing-process groups
+    // ({ process, types, remarks }); older rows may still hold the flat fields.
+    const groupsOf = (wo) => {
+      if (Array.isArray(wo.finishingGroups) && wo.finishingGroups.length) return wo.finishingGroups;
+      if (wo.finishingProcess || (wo.finishingTypes || []).length) {
+        return [{ process: wo.finishingProcess, types: wo.finishingTypes || [] }];
+      }
+      return [];
+    };
+    return finWos.every((wo) => {
+      const groups = groupsOf(wo);
+      return groups.length > 0 && groups.every((g) => g.process?.toString().trim() && (g.types || []).length > 0);
+    });
   };
 
   // Save the step then return to the IPC selector (where "Proceed to Packaging" lives).
@@ -2132,7 +2145,10 @@ const GenerateFactoryCode = ({
             auto &&
             (field === 'subMaterial' ||
               field === 'trimAccessory' ||
-              getDescriptionSourceFields(updatedMaterial.materialType, updatedMaterial.trimAccessory).includes(field))
+              // Any stitching-thread field regenerates so the description backfills
+              // from already-filled specs (e.g. when the user only edits Remarks).
+              field.startsWith('stitchingThread') ||
+              getDescriptionSourceFields(updatedMaterial.materialType, updatedMaterial.trimAccessory, updatedMaterial).includes(field))
           ) {
             updatedRawMaterials[materialIndex] = {
               ...updatedMaterial,
@@ -2431,6 +2447,7 @@ const GenerateFactoryCode = ({
           sewWastage: '',
           finishingProcess: '',
           finishingTypes: [],
+          finishingGroups: [],
           isRequired: '',
           wastage: '',
           forField: '',
@@ -2439,8 +2456,6 @@ const GenerateFactoryCode = ({
           design: '',
           imageRef: null,
           qualityVerification: '',
-          startDate: '',
-          dateOfCompletion: '',
           machineType: '',
           reed: '',
           pick: '',
@@ -2571,7 +2586,6 @@ const GenerateFactoryCode = ({
         netConsumption: '',
         unit: '',
         materialType: materialType,
-        procurementDate: '',
         qualityVerification: '',
         workOrders: [{
           workOrder: '',
@@ -2583,8 +2597,6 @@ const GenerateFactoryCode = ({
           design: '',
           imageRef: null,
           qualityVerification: '',
-          startDate: '',
-          dateOfCompletion: '',
           machineType: '',
           reed: '',
           pick: '',
@@ -3415,7 +3427,7 @@ const GenerateFactoryCode = ({
           receivedUnit: wo.receivedUnit || '', processUnit: wo.processUnit || '', dispatchUnit: wo.dispatchUnit || '',
           cutLength: wo.cutLength || '', cutWidth: wo.cutWidth || '', cutUnit: wo.cutUnit || '', cutWastage: wo.cutWastage || '',
           sewLength: wo.sewLength || '', sewWidth: wo.sewWidth || '', sewUnit: wo.sewUnit || '', sewWastage: wo.sewWastage || '',
-          finishingProcess: wo.finishingProcess || '', finishingTypes: wo.finishingTypes || [], remarks: wo.remarks || '',
+          finishingProcess: wo.finishingProcess || '', finishingTypes: wo.finishingTypes || [], finishingGroups: wo.finishingGroups || [], remarks: wo.remarks || '',
         }))
     ),
   });
@@ -4425,10 +4437,6 @@ const GenerateFactoryCode = ({
     let isValid = false;
     setErrors(prevErrors => {
       const newErrors = { ...prevErrors };
-      const todayLocal = new Date();
-      const today = new Date(todayLocal.getTime() - todayLocal.getTimezoneOffset() * 60000)
-        .toISOString()
-        .split('T')[0];
       
       // Material fields
       if (fieldKey.includes('materialType')) {
@@ -4457,19 +4465,7 @@ const GenerateFactoryCode = ({
         } else {
           delete newErrors[fieldKey];
         }
-      } else if (fieldKey.includes('procurementDate')) {
-        const dateValue = value?.toString().trim();
-        const isDateFormatValid = /^\d{4}-\d{2}-\d{2}$/.test(dateValue);
-        if (!dateValue) {
-          newErrors[fieldKey] = 'Procurement Date is required';
-        } else if (!isDateFormatValid) {
-          newErrors[fieldKey] = 'Procurement Date is invalid';
-        } else if (dateValue < today) {
-          newErrors[fieldKey] = 'Procurement Date cannot be in the past';
-        } else {
-          delete newErrors[fieldKey];
-        }
-      } 
+      }
       // Work order fields
       else if (fieldKey.includes('workOrder') && fieldKey.endsWith('_workOrder')) {
         if (!value?.trim()) {
@@ -4527,10 +4523,6 @@ const GenerateFactoryCode = ({
 
   const validateStep2 = () => {
     const newErrors = {};
-    const todayLocal = new Date();
-    const today = new Date(todayLocal.getTime() - todayLocal.getTimezoneOffset() * 60000)
-      .toISOString()
-      .split('T')[0];
 
     const stepData = getSelectedSkuStepData();
     const materials = (stepData && stepData.rawMaterials) || [];
@@ -4547,13 +4539,11 @@ const GenerateFactoryCode = ({
 
     const isMaterialComplete = (m) => {
       const unitValue = m?.unit?.toString().trim();
-      const procurementDate = m?.procurementDate?.toString().trim();
       return Boolean(
         m?.materialType?.toString().trim() &&
           m?.materialDescription?.toString().trim() &&
           m?.netConsumption?.toString().trim() &&
-          unitValue &&
-          procurementDate
+          unitValue
       );
     };
 
@@ -4576,14 +4566,6 @@ const GenerateFactoryCode = ({
       const unitValue = material.unit?.toString().trim();
       if (!unitValue || unitValue === '') {
         newErrors[`rawMaterial_${keyIndex}_unit`] = 'Unit is required';
-      }
-      const procurementDate = material.procurementDate?.toString().trim();
-      if (!procurementDate) {
-        newErrors[`rawMaterial_${keyIndex}_procurementDate`] = 'Procurement Date is required';
-      } else if (!/^\d{4}-\d{2}-\d{2}$/.test(procurementDate)) {
-        newErrors[`rawMaterial_${keyIndex}_procurementDate`] = 'Procurement Date is invalid';
-      } else if (procurementDate < today) {
-        newErrors[`rawMaterial_${keyIndex}_procurementDate`] = 'Procurement Date cannot be in the past';
       }
     });
     
@@ -4619,10 +4601,6 @@ const GenerateFactoryCode = ({
   // Validate materials for a specific component only
   const validateComponentMaterials = (componentName) => {
     const newErrors = {};
-    const todayLocal = new Date();
-    const today = new Date(todayLocal.getTime() - todayLocal.getTimezoneOffset() * 60000)
-      .toISOString()
-      .split('T')[0];
 
     const stepData = getSelectedSkuStepData();
     const allMaterials = (stepData && stepData.rawMaterials) || [];
@@ -4661,15 +4639,6 @@ const GenerateFactoryCode = ({
           newErrors[`${errorPrefix}_unit`] = 'Unit is required';
         }
       }
-      const procurementDate = material.procurementDate?.toString().trim();
-      if (!procurementDate) {
-        newErrors[`${errorPrefix}_procurementDate`] = 'Procurement Date is required';
-      } else if (!/^\d{4}-\d{2}-\d{2}$/.test(procurementDate)) {
-        newErrors[`${errorPrefix}_procurementDate`] = 'Procurement Date is invalid';
-      } else if (procurementDate < today) {
-        newErrors[`${errorPrefix}_procurementDate`] = 'Procurement Date cannot be in the past';
-      }
-      
       // === FABRIC SPECIFIC FIELDS ===
       if (matType === 'Fabric') {
         const fabricResult = validateMaterialAgainstSchema(material, FABRIC_SCHEMA, errorPrefix);
@@ -5075,6 +5044,10 @@ const GenerateFactoryCode = ({
       consumptionMaterials: stepData.consumptionMaterials || [],
       artworkMaterials: stepData.artworkMaterials || [],
       packaging: packagingSafe,
+      // Cut & Sew Section-2 (clubs) + assembly flag live on the SKU's stepData —
+      // merge them so the process UI reflects clubbing.
+      processAssignments: stepData.processAssignments || { cutting: { clubs: [] }, sewing: { clubs: [] } },
+      sewAssemblyMoved: stepData.sewAssemblyMoved || false,
       // Also include SKU-specific data for calculations
       poQty: (() => {
         const parsed = parseSelectedSku();
@@ -5114,9 +5087,40 @@ const GenerateFactoryCode = ({
         stepData = formData.skus?.[parseInt(parts[1])]?.subproducts?.[parseInt(parts[2])]?.stepData;
       }
       const savedState = getNormalizedIpcSavedState(stepData);
+
+      // The ipcSavedState flags are the primary signal, but they are fragile:
+      // `raw` needs the whole BOM saved within the same session, and `cut` is only
+      // stamped by an explicit Step1 save. After a reload the underlying data is all
+      // in the draft, so we ALSO derive completion straight from the persisted data
+      // and OR it in — a genuinely-filled, saved section then reads ✓ even if its
+      // flag never got stamped this session.
+      const compSet = new Set();
+      (stepData?.products || []).forEach((p) =>
+        (p.components || []).forEach((c) => { if (c?.productComforter) compSet.add(c.productComforter); }));
+      const compsWithMaterials = new Set();
+      (stepData?.rawMaterials || []).forEach((m) => {
+        if (m?.componentName && (compSet.size === 0 || compSet.has(m.componentName))) compsWithMaterials.add(m.componentName);
+      });
+
+      // BOM & WO complete = every component that has materials is in the persisted
+      // saved-components list (survives reload; independent of the in-session Set).
+      const rawSaved = getNormalizedRawSavedComponents(stepData);
+      const rawDerived = compsWithMaterials.size > 0 && [...compsWithMaterials].every((c) => rawSaved.includes(c));
+
+      // Cut & Sew complete = every declared CUTTING / SEWING work order is sized and
+      // every FINISHING work order is filled (the same bar handleSaveStep1 stamps).
+      const wos = (stepData?.rawMaterials || []).flatMap((m) => m?.workOrders || []);
+      const cutWos = wos.filter((w) => w?.workOrder === 'CUTTING');
+      const sewWos = wos.filter((w) => w?.workOrder === 'SEWING');
+      const hasCutSew = cutWos.length > 0 || sewWos.length > 0;
+      const cutDerived = hasCutSew
+        && cutWos.every((w) => w.cutLength && w.cutWidth)
+        && sewWos.every((w) => w.sewLength && w.sewWidth)
+        && isFinishingComplete(stepData);
+
       return {
-        cut: savedState.cut,
-        raw: savedState.raw,
+        cut: savedState.cut || cutDerived,
+        raw: savedState.raw || rawDerived,
         artwork: savedState.artwork,
       };
     };
@@ -5374,6 +5378,8 @@ const GenerateFactoryCode = ({
                 propagateClubs={propagateClubs}
                 markSewMovedToAssembly={markSewMovedToAssembly}
                 onProceedToSelector={goToIpcSelector}
+                onPrev={handlePrevious}
+                onNext={handleNext}
                 validateStep1={validateStep1}
                 handleSave={handleSaveStep1}
                 showSaveMessage={showSaveMessage && currentStep === 2}
@@ -5939,12 +5945,9 @@ const GenerateFactoryCode = ({
                 <Button type="button" onClick={handleNext}>Next →</Button>
               </div>
             ) : flowPhase === 'ipcFlow' && currentStep === 2 ? (
-              // Cut & Sew Spec (ipcFlow step 2): Step1 has Save + Add Component; nav only Prev + Next
-              <div className="flex justify-end items-center gap-3" style={{ marginTop: '32px' }}>
-                {showSaveMessage && <span className="text-red-600 text-sm font-medium">Save first</span>}
-                <Button type="button" variant="outline" onClick={handlePrevious}>← Previous</Button>
-                <Button type="button" onClick={handleNext}>Next →</Button>
-              </div>
+              // Cut, Sew & Finishing: Step1 renders its own bottom nav
+              // (Previous | Sew as IPC & Forward to Pack | Next).
+              null
             ) : currentStep === 3 ? (
               // Artwork / Labelling step: Save + Add Material on left, Save first + Prev/Next on right (same template as Step1)
               <div className="flex items-center justify-between" style={{ marginTop: '32px' }}>

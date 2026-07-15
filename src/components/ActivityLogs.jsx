@@ -1,6 +1,8 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useAuth } from "../context/AuthContext";
+import Pagination from "@/components/ui/Pagination";
 import { getFilteredActivityLogs, getMembers } from "../api/authService";
+import { useServerPagination } from "../hooks/useServerPagination";
 
 const ACTION_TYPES = [
   { value: "", label: "All Actions" },
@@ -231,9 +233,6 @@ export default function ActivityLogs() {
   const isMasterAdmin =
     user?.highest_role === "master_admin" || user?.role === "master_admin";
 
-  const [logs, setLogs] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
   const [members, setMembers] = useState([]);
 
   // Filters
@@ -257,29 +256,43 @@ export default function ActivityLogs() {
     }
   }, [isMasterAdmin]);
 
-  const fetchLogs = useCallback(async () => {
-    setLoading(true);
-    setError("");
-    try {
-      const data = await getFilteredActivityLogs({
+  const fetchPage = useCallback(
+    ({ page, pageSize }) =>
+      getFilteredActivityLogs({
         user: filterUser,
         action: filterAction,
         entity_type: filterModule,
         from_date: filterFrom,
         to_date: filterTo,
-      });
-      setLogs(data);
-    } catch (err) {
-      setError(err.message || "Failed to load logs");
-      setLogs([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [filterUser, filterModule, filterAction, filterFrom, filterTo]);
+        page,
+        page_size: pageSize,
+      }),
+    [filterUser, filterModule, filterAction, filterFrom, filterTo],
+  );
 
+  const {
+    items: logs,
+    count,
+    page,
+    setPage,
+    pageSize,
+    loading,
+    error: fetchError,
+    refresh,
+  } = useServerPagination(fetchPage, { pageSize: 10 });
+
+  const error = fetchError ? fetchError.message || "Failed to load logs" : "";
+
+  // Re-fetch from page 1 when any filter changes (skip the initial mount).
+  const didMountRef = useRef(false);
   useEffect(() => {
-    fetchLogs();
-  }, [fetchLogs]);
+    if (!didMountRef.current) {
+      didMountRef.current = true;
+      return;
+    }
+    setPage(1);
+    refresh();
+  }, [filterUser, filterModule, filterAction, filterFrom, filterTo, setPage, refresh]);
 
   const clearFilters = () => {
     setFilterUser("");
@@ -384,7 +397,7 @@ export default function ActivityLogs() {
 
       {/* Table */}
       <div style={S.tableWrap}>
-        {loading ? (
+        {loading && logs.length === 0 ? (
           <div style={S.loading}>Loading logs...</div>
         ) : (
           <table style={S.table}>
@@ -437,6 +450,14 @@ export default function ActivityLogs() {
           </table>
         )}
       </div>
+
+      <Pagination
+        page={page}
+        pageSize={pageSize}
+        totalCount={count}
+        onPageChange={setPage}
+        disabled={loading}
+      />
     </div>
   );
 }

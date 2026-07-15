@@ -1,19 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { getIPOs } from '../services/integration';
-import { useLoading } from '../context/LoadingContext';
-
-const COMPLETED_KEY = 'completedIpos';
-
-const readCompletedKeys = () => {
-  try {
-    const raw = localStorage.getItem(COMPLETED_KEY);
-    const parsed = raw ? JSON.parse(raw) : [];
-    return new Set(Array.isArray(parsed) ? parsed.map(String) : []);
-  } catch {
-    return new Set();
-  }
-};
+import Pagination from '@/components/ui/Pagination';
+import { getIPOs, clearCompletedIpos } from '../services/integration';
+import { useServerPagination } from '../hooks/useServerPagination';
 
 const extractItems = (payload) => {
   if (Array.isArray(payload)) return payload;
@@ -22,68 +11,63 @@ const extractItems = (payload) => {
   if (Array.isArray(payload?.data?.results)) return payload.data.results;
   return [];
 };
+const getCount = (payload, fallback) =>
+  Number.isFinite(payload?.count) ? payload.count : fallback;
 
-const normalizeIpo = (ipo) => {
-  const id = String(ipo.id || ipo.ipoId || '');
-  const code = ipo.ipo_code || ipo.ipoCode || '';
-  return {
-    key: id || code,
-    id,
-    code,
-    orderType: ipo.order_type || ipo.orderType || '',
-    createdAt: ipo.created_at || ipo.createdAt || '',
-  };
-};
+const normalizeIpo = (ipo) => ({
+  id: String(ipo.id || ipo.ipoId || ''),
+  code: ipo.ipo_code || ipo.ipoCode || '',
+  orderType: ipo.order_type || ipo.orderType || '',
+  createdAt: ipo.created_at || ipo.createdAt || '',
+});
 
 const CompletedIPOs = ({ onBack }) => {
-  const [ipos, setIpos] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const { showLoading, hideLoading } = useLoading();
+  const [clearing, setClearing] = useState(false);
 
-  const fetchIpos = useCallback(async () => {
-    showLoading();
-    try {
-      setLoading(true);
-      setError(null);
-      const completedKeys = readCompletedKeys();
-      const response = await getIPOs();
-      const list = extractItems(response)
-        .map(normalizeIpo)
-        .filter((ipo) => completedKeys.has(ipo.key));
-      setIpos(list);
-    } catch (err) {
-      console.warn('Failed to load completed IPOs:', err);
-      setError('Failed to load IPOs. Please try again.');
-    } finally {
-      setLoading(false);
-      hideLoading();
-    }
-  }, [showLoading, hideLoading]);
+  // Completed IPOs, paginated server-side.
+  const fetchPage = useCallback(({ page, pageSize }) => {
+    return getIPOs({ is_completed: true, page, page_size: pageSize }).then((res) => {
+      const results = extractItems(res).map(normalizeIpo);
+      return { results, count: getCount(res, results.length) };
+    });
+  }, []);
 
+  const {
+    items: ipos,
+    count,
+    page,
+    setPage,
+    pageSize,
+    loading,
+    error,
+    refresh,
+  } = useServerPagination(fetchPage, { pageSize: 10 });
+
+  // Refresh when an IPO is deleted/created elsewhere in the app.
   useEffect(() => {
-    fetchIpos();
-  }, [fetchIpos]);
-
-  // Refresh when an IPO is deleted from anywhere else in the app — the
-  // Dashboard dispatches this event after a successful deleteIPO call,
-  // and also scrubs the IPO from the completedIpos localStorage cache.
-  useEffect(() => {
-    const handler = () => fetchIpos();
+    const handler = () => refresh();
     window.addEventListener('internalPurchaseOrdersUpdated', handler);
     return () => window.removeEventListener('internalPurchaseOrdersUpdated', handler);
-  }, [fetchIpos]);
+  }, [refresh]);
 
-  // Wipes the local "completed" list. Those IPOs become active again and
-  // will show back up in the Master IPO Sheet on its next mount.
-  const handleClearTable = () => {
-    if (ipos.length === 0) return;
+  // Returns every completed IPO to active (server-side, tenant-wide).
+  const handleClearTable = async () => {
+    if (count === 0 || clearing) return;
     const ok = window.confirm(
-      `Clear all ${ipos.length} completed IPO${ipos.length === 1 ? '' : 's'}? They will return to the Master IPO Sheet.`
+      `Clear all ${count} completed IPO${count === 1 ? '' : 's'}? They will return to the Master IPO Sheet.`
     );
     if (!ok) return;
-    localStorage.removeItem(COMPLETED_KEY);
-    setIpos([]);
+    setClearing(true);
+    try {
+      await clearCompletedIpos();
+      setPage(1);
+      refresh();
+    } catch (err) {
+      console.warn('Failed to clear completed IPOs:', err);
+      alert('Failed to clear. Please try again.');
+    } finally {
+      setClearing(false);
+    }
   };
 
   const headerCellStyle = {
@@ -128,26 +112,26 @@ const CompletedIPOs = ({ onBack }) => {
         }}
       >
         <span className="text-sm text-muted-foreground">
-          Total completed: <strong className="text-foreground">{ipos.length}</strong>
+          Total completed: <strong className="text-foreground">{count}</strong>
         </span>
         <Button
           variant="outline"
           onClick={handleClearTable}
-          disabled={ipos.length === 0}
+          disabled={count === 0 || clearing}
           type="button"
           className="text-destructive hover:text-destructive"
         >
-          Clear table
+          {clearing ? 'Clearing…' : 'Clear table'}
         </Button>
       </div>
 
-      {loading ? (
+      {loading && ipos.length === 0 ? (
         <div style={{ textAlign: 'center', padding: '48px', color: 'var(--muted-foreground)' }}>
           Loading completed IPOs...
         </div>
       ) : error ? (
         <div style={{ textAlign: 'center', padding: '48px', color: 'var(--destructive)' }}>
-          {error}
+          Failed to load IPOs. Please try again.
         </div>
       ) : ipos.length === 0 ? (
         <div style={{ textAlign: 'center', padding: '48px', color: 'var(--muted-foreground)' }}>
@@ -160,6 +144,8 @@ const CompletedIPOs = ({ onBack }) => {
             borderRadius: 'var(--radius-lg)',
             overflowX: 'auto',
             backgroundColor: 'var(--card)',
+            opacity: loading ? 0.6 : 1,
+            transition: 'opacity 0.15s',
           }}
         >
           <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '500px' }}>
@@ -176,7 +162,7 @@ const CompletedIPOs = ({ onBack }) => {
             <tbody>
               {ipos.map((ipo, index) => (
                 <tr
-                  key={ipo.key || index}
+                  key={ipo.id || index}
                   style={{
                     borderBottom: index < ipos.length - 1 ? '1px solid var(--border)' : 'none',
                   }}
@@ -187,6 +173,16 @@ const CompletedIPOs = ({ onBack }) => {
             </tbody>
           </table>
         </div>
+      )}
+
+      {!loading && !error && (
+        <Pagination
+          page={page}
+          pageSize={pageSize}
+          totalCount={count}
+          onPageChange={setPage}
+          disabled={loading}
+        />
       )}
     </div>
   );

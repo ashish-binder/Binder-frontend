@@ -1,8 +1,19 @@
-import { useState, useEffect } from 'react';
+import { useState, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { FiEye, FiEdit2, FiTrash2, FiSearch, FiX } from 'react-icons/fi';
-import { getVendorCodes, getVendorCode, getVendorMasterSheet, deleteVendorCode } from '../services/integration';
-import { useLoading } from '../context/LoadingContext';
+import { getVendorMasterSheet, deleteVendorCode } from '../services/integration';
+import Pagination from '@/components/ui/Pagination';
+import { useServerPagination } from '../hooks/useServerPagination';
+
+// Table column -> backend ordering field.
+const SORT_FIELDS = {
+  code: 'code',
+  vendorName: 'vendor_name',
+  contactPerson: 'contact_person',
+  jobWorkCategory: 'job_work_category',
+  paymentTerms: 'payment_terms',
+  createdAt: 'created_at',
+};
 
 // Shared Tailwind class strings — flat/clean theme matching the StockSheet revamp.
 const TH =
@@ -58,16 +69,11 @@ const normalizeVendor = (vendor) => {
   };
 };
 
-const hasMissingVendorFields = (vendor) =>
-  !hasValue(vendor.address) ||
-  !hasValue(vendor.gst) ||
-  !hasValue(vendor.bankName) ||
-  !hasValue(vendor.accNo) ||
-  !hasValue(vendor.ifscCode) ||
-  !hasValue(vendor.contactPerson) ||
-  !hasValue(vendor.whatsappNo) ||
-  !hasValue(vendor.email) ||
-  !hasValue(vendor.paymentTerms);
+const getCount = (payload, fallback) => {
+  if (Number.isFinite(payload?.count)) return payload.count;
+  if (Number.isFinite(payload?.data?.count)) return payload.data.count;
+  return fallback;
+};
 
 const formatDate = (dateString) => {
   const date = new Date(dateString);
@@ -181,120 +187,39 @@ const VendorDetailsModal = ({ vendor, onClose }) =>
   );
 
 const VendorMasterSheet = ({ onBack, onEditVendor }) => {
-  const [vendors, setVendors] = useState([]);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' });
   const [selectedVendor, setSelectedVendor] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const { showLoading, hideLoading } = useLoading();
 
-  useEffect(() => {
-    const fetchVendors = async () => {
-      showLoading();
-      try {
-        setLoading(true);
-        setError(null);
-
-        let vendorList = [];
-
-        // 1. Try the master-sheet endpoint first, then fall back to the list endpoint
-        try {
-          const masterSheetData = await getVendorMasterSheet();
-          vendorList = extractItems(masterSheetData);
-        } catch (masterSheetError) {
-          console.warn('Vendor master sheet fetch failed:', masterSheetError);
-        }
-
-        if (vendorList.length === 0) {
-          try {
-            const data = await getVendorCodes();
-            vendorList = extractItems(data);
-          } catch (apiError) {
-            console.warn('API list fetch failed:', apiError);
-          }
-        }
-
-        // 2. When list data is sparse, fetch the detail record to fill missing fields
-        if (vendorList.length > 0) {
-          vendorList = await Promise.all(
-            vendorList.map(async (vendor) => {
-              const normalized = normalizeVendor(vendor);
-              if (!hasMissingVendorFields(normalized)) {
-                return vendor;
-              }
-
-              const identifier = normalized.id || normalized.code;
-              if (!identifier) {
-                return vendor;
-              }
-
-              try {
-                const detail = await getVendorCode(identifier);
-                const detailData = detail?.data && typeof detail.data === 'object' ? detail.data : detail;
-                return {
-                  ...vendor,
-                  ...Object.fromEntries(
-                    Object.entries(detailData || {}).filter(([, value]) => hasValue(value))
-                  )
-                };
-              } catch (detailError) {
-                console.warn(`Vendor detail fetch failed for ${identifier}:`, detailError);
-                return vendor;
-              }
-            })
-          );
-        }
-
-        // 3. Normalize all vendor data
-        const normalizedVendors = vendorList.map(v => normalizeVendor(v));
-        setVendors(normalizedVendors);
-      } catch (err) {
-        console.error('Error fetching vendors:', err);
-        setError('Failed to load vendors');
-        setVendors([]);
-      } finally {
-        setLoading(false);
-        hideLoading();
-      }
-    };
-
-    fetchVendors();
+  const fetchPage = useCallback(({ page, pageSize, search, ordering }) => {
+    const params = { page, page_size: pageSize };
+    if (search) params.search = search;
+    if (ordering) params.ordering = ordering;
+    return getVendorMasterSheet(params).then((res) => {
+      const items = extractItems(res).map(normalizeVendor);
+      return { results: items, count: getCount(res, items.length) };
+    });
   }, []);
 
-  // Filter vendors based on search term
-  const filteredVendors = vendors.filter(vendor =>
-    (vendor.vendorName || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (vendor.code || '').toString().toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (vendor.contactPerson || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (vendor.email || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (vendor.gst || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (vendor.address || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (vendor.paymentTerms || '').toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const {
+    items: vendors,
+    count,
+    page,
+    setPage,
+    pageSize,
+    loading,
+    error,
+    searchInput,
+    setSearchInput,
+    ordering,
+    toggleSort,
+    refresh,
+  } = useServerPagination(fetchPage, { pageSize: 10, initialOrdering: '-created_at' });
 
-  // Sort vendors
-  const sortedVendors = [...filteredVendors].sort((a, b) => {
-    if (!sortConfig.key) return 0;
+  const sortField = ordering ? ordering.replace(/^-/, '') : null;
+  const sortDir = ordering && ordering.startsWith('-') ? 'desc' : 'asc';
 
-    const aValue = a[sortConfig.key];
-    const bValue = b[sortConfig.key];
-
-    if (aValue < bValue) {
-      return sortConfig.direction === 'asc' ? -1 : 1;
-    }
-    if (aValue > bValue) {
-      return sortConfig.direction === 'asc' ? 1 : -1;
-    }
-    return 0;
-  });
-
-  const handleSort = (key) => {
-    let direction = 'asc';
-    if (sortConfig.key === key && sortConfig.direction === 'asc') {
-      direction = 'desc';
-    }
-    setSortConfig({ key, direction });
+  const handleSort = (columnKey) => {
+    const field = SORT_FIELDS[columnKey];
+    if (field) toggleSort(field);
   };
 
   const handleDeleteVendor = async (vendor) => {
@@ -309,7 +234,11 @@ const VendorMasterSheet = ({ onBack, onEditVendor }) => {
           console.warn(`API delete with "${identifier}" failed:`, err);
         }
       }
-      setVendors((prev) => prev.filter(v => v.code !== vendor.code));
+      if (vendors.length === 1 && page > 1) {
+        setPage(page - 1);
+      } else {
+        refresh();
+      }
     }
   };
 
@@ -326,12 +255,12 @@ const VendorMasterSheet = ({ onBack, onEditVendor }) => {
   };
 
   const getSortIcon = (columnKey) => {
-    if (sortConfig.key !== columnKey) {
+    if (sortField !== SORT_FIELDS[columnKey]) {
       return <span className="ml-1 text-[10px] opacity-40">↕</span>;
     }
     return (
       <span className="ml-1 text-[10px] text-primary">
-        {sortConfig.direction === 'asc' ? '↑' : '↓'}
+        {sortDir === 'asc' ? '↑' : '↓'}
       </span>
     );
   };
@@ -378,29 +307,29 @@ const VendorMasterSheet = ({ onBack, onEditVendor }) => {
             <FiSearch className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <input
               type="text"
-              placeholder="Search by name, code, contact, email, GST, address, or payment terms..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Search by name, code, contact, email, GST, or category..."
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
               className="w-full rounded-md border border-[#e2e3e8] bg-card py-3 pl-10 pr-4 text-sm text-foreground outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/15"
             />
           </div>
           <div className="text-sm text-muted-foreground">
-            Total Vendors: <strong className="text-foreground">{filteredVendors.length}</strong>
+            Total Vendors: <strong className="text-foreground">{count}</strong>
           </div>
         </div>
 
-        {loading ? (
+        {loading && vendors.length === 0 ? (
           <p className="p-12 text-center text-sm text-muted-foreground">Loading vendors...</p>
         ) : error ? (
-          <p className="p-12 text-center text-sm text-destructive">{error}</p>
-        ) : sortedVendors.length === 0 ? (
+          <p className="p-12 text-center text-sm text-destructive">Failed to load vendors</p>
+        ) : vendors.length === 0 ? (
           <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-[#d5d6dc] bg-card px-6 py-16 text-center">
             <p className="text-base text-muted-foreground">
-              No vendors found{searchTerm ? ' matching your search' : ''}.
+              No vendors found{searchInput ? ' matching your search' : ''}.
             </p>
           </div>
         ) : (
-          <div className="overflow-hidden rounded-lg border border-[#e2e3e8] bg-card">
+          <div className="overflow-hidden rounded-lg border border-[#e2e3e8] bg-card" style={{ opacity: loading ? 0.6 : 1, transition: 'opacity 0.15s' }}>
             <div className="overflow-x-auto">
               <table className="w-full table-fixed border-collapse text-sm" style={{ minWidth: 1620 }}>
                 <thead>
@@ -421,7 +350,7 @@ const VendorMasterSheet = ({ onBack, onEditVendor }) => {
                   </tr>
                 </thead>
                 <tbody>
-                  {sortedVendors.map((vendor, index) => (
+                  {vendors.map((vendor, index) => (
                     <tr
                       key={vendor.code || index}
                       className="transition-colors hover:bg-muted/50"
@@ -549,11 +478,13 @@ const VendorMasterSheet = ({ onBack, onEditVendor }) => {
           </div>
         )}
 
-        {!loading && !error && sortedVendors.length > 0 && (
-          <div className="rounded-md bg-muted px-4 py-3 text-sm text-muted-foreground">
-            Showing {filteredVendors.length} of {vendors.length} vendors
-          </div>
-        )}
+        <Pagination
+          page={page}
+          pageSize={pageSize}
+          totalCount={count}
+          onPageChange={setPage}
+          disabled={loading}
+        />
       </div>
 
       {selectedVendor && (

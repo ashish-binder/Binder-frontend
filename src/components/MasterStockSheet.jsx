@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import { FiPlusCircle, FiSearch } from "react-icons/fi";
+import Pagination from "@/components/ui/Pagination";
 import { getStockSheets } from "../services/integration";
-import { useLoading } from "../context/LoadingContext";
+import { useServerPagination } from "../hooks/useServerPagination";
 import "./InwardStoreSheet.css";
 import "./IMS/StockSheet/StockSheet.css";
 
@@ -10,37 +11,40 @@ const SOURCE_LABELS = {
   FROM_IPO: "FROM_IPO",
 };
 
+const extractItems = (payload) => {
+  if (Array.isArray(payload)) return payload;
+  if (Array.isArray(payload?.results)) return payload.results;
+  if (Array.isArray(payload?.data)) return payload.data;
+  return [];
+};
+const getCount = (payload, fallback) =>
+  Number.isFinite(payload?.count) ? payload.count : fallback;
+
 const MasterStockSheet = ({ onBack, onOpenForm }) => {
-  const [sheets, setSheets] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState("");
   const [expandedId, setExpandedId] = useState(null);
-  const { showLoading, hideLoading } = useLoading();
 
-  const loadSheets = async () => {
-    setLoading(true);
-    showLoading();
-    try {
-      const params = {};
-      if (search.trim()) params.search = search.trim();
-      const data = await getStockSheets(params);
-      const results = data?.results || data || [];
-      setSheets(Array.isArray(results) ? results : []);
-    } catch {
-      setSheets([]);
-    } finally {
-      setLoading(false);
-      hideLoading();
-    }
-  };
-
-  useEffect(() => {
-    loadSheets();
+  const fetchPage = useCallback(({ page, pageSize, search }) => {
+    const params = { page, page_size: pageSize };
+    if (search) params.search = search;
+    return getStockSheets(params).then((res) => {
+      const results = extractItems(res);
+      return { results, count: getCount(res, results.length) };
+    });
   }, []);
+
+  const {
+    items: sheets,
+    count,
+    page,
+    setPage,
+    pageSize,
+    loading,
+    searchInput,
+    setSearchInput,
+  } = useServerPagination(fetchPage, { pageSize: 10 });
 
   const handleSearch = (e) => {
     e.preventDefault();
-    loadSheets();
   };
 
   const formatDateParts = (iso) => {
@@ -192,8 +196,8 @@ const MasterStockSheet = ({ onBack, onOpenForm }) => {
               <input
                 type="text"
                 placeholder="Search by IPC / IPO code…"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
                 className="w-full rounded-md border border-[#e2e3e8] bg-card py-3 pl-10 pr-4 text-sm text-foreground outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/15"
               />
             </div>
@@ -206,7 +210,7 @@ const MasterStockSheet = ({ onBack, onOpenForm }) => {
           </form>
         </div>
 
-        {loading ? (
+        {loading && sheets.length === 0 ? (
           <p style={{ color: "var(--muted-foreground)", padding: 24 }}>
             Loading…
           </p>
@@ -711,6 +715,14 @@ const MasterStockSheet = ({ onBack, onOpenForm }) => {
             </div>
           </div>
         )}
+
+        <Pagination
+          page={page}
+          pageSize={pageSize}
+          totalCount={count}
+          onPageChange={setPage}
+          disabled={loading}
+        />
       </div>
     </div>
   );

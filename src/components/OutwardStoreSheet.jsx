@@ -8,6 +8,7 @@ import {
   getVpoHistory,
   getVpoDetail,
 } from "../services/integration";
+import { uploadToBlob } from "../services/blobUpload";
 import ThemedSelect from "./IMS/StockSheet/ThemedSelect";
 
 // Shared Tailwind class strings — flat/clean theme matching the StockSheet revamp:
@@ -534,6 +535,20 @@ const OutwardStoreSheet = ({ onBack }) => {
     }
 
     try {
+      // Upload each picked image to Vercel Blob (in parallel); the API stores the
+      // returned public URLs, not file bytes.
+      const [
+        dispatchedGoodsUrl,
+        vehicleNoUrl,
+        companyChallanUrl,
+      ] = await Promise.all([
+        dispatchedGoodsConditionImage
+          ? uploadToBlob(dispatchedGoodsConditionImage, "ims/outward/goods-condition")
+          : "",
+        vehicleNoImage ? uploadToBlob(vehicleNoImage, "ims/outward/vehicle-no") : "",
+        companyChallanImage ? uploadToBlob(companyChallanImage, "ims/outward/company-challan") : "",
+      ]);
+
       const payload = new FormData();
       payload.append("dispatch_type", dispatchType);
       payload.append("dispatch_issued_to_address", dispatchIssuedToAddress);
@@ -559,17 +574,14 @@ const OutwardStoreSheet = ({ onBack }) => {
         payload.append("ipo", selectedIpo);
       }
 
-      if (dispatchedGoodsConditionImage) {
-        payload.append(
-          "dispatched_goods_condition_image",
-          dispatchedGoodsConditionImage,
-        );
+      if (dispatchedGoodsUrl) {
+        payload.append("dispatched_goods_condition_image", dispatchedGoodsUrl);
       }
-      if (vehicleNoImage) {
-        payload.append("vehicle_no_image", vehicleNoImage);
+      if (vehicleNoUrl) {
+        payload.append("vehicle_no_image", vehicleNoUrl);
       }
-      if (companyChallanImage) {
-        payload.append("company_challan_image", companyChallanImage);
+      if (companyChallanUrl) {
+        payload.append("company_challan_image", companyChallanUrl);
       }
 
       payload.append(

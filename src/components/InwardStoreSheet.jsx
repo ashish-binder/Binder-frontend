@@ -7,6 +7,7 @@ import {
   getVpoHistory,
   getVpoDetail,
 } from "../services/integration";
+import { uploadToBlob } from "../services/blobUpload";
 import ThemedSelect from "./IMS/StockSheet/ThemedSelect";
 
 // Shared Tailwind class strings — flat/clean theme matching the StockSheet revamp:
@@ -240,8 +241,10 @@ const InwardStoreSheet = ({ onBack }) => {
     }
     const loadIPCs = async () => {
       try {
+        // Scope IPCs to the chosen IPO (endpoint supports ?ipo=); otherwise the
+        // dropdown would list every factory code across all IPOs.
         const resp = await fetch(
-          `${import.meta.env.VITE_API_URL || "https://binder-backend-0szj.onrender.com/api/"}ims/factory-codes/`,
+          `${import.meta.env.VITE_API_URL || "https://binder-backend-0szj.onrender.com/api/"}ims/factory-codes/?ipo=${encodeURIComponent(selectedIpo)}`,
           {
             headers: {
               Authorization: `Bearer ${localStorage.getItem("access_token")}`,
@@ -301,6 +304,22 @@ const InwardStoreSheet = ({ onBack }) => {
     setSuccessMsg("");
 
     try {
+      // Upload each picked image to Vercel Blob (in parallel) and keep only the
+      // returned public URLs — the API stores URLs, not file bytes.
+      const [
+        goodsConditionUrl,
+        vehicleNumberUrl,
+        vehiclePicUrl,
+        vendorChallanUrl,
+        vendorInvoiceUrl,
+      ] = await Promise.all([
+        goodsConditionImage ? uploadToBlob(goodsConditionImage, "ims/inward/goods-condition") : "",
+        vehicleNumberImage ? uploadToBlob(vehicleNumberImage, "ims/inward/vehicle-number") : "",
+        vehiclePic ? uploadToBlob(vehiclePic, "ims/inward/vehicle-pic") : "",
+        vendorChallanImage ? uploadToBlob(vendorChallanImage, "ims/inward/vendor-challan") : "",
+        !isChallanOnly && vendorInvoiceImage ? uploadToBlob(vendorInvoiceImage, "ims/inward/vendor-invoice") : "",
+      ]);
+
       const payload = {
         receivable_type: receivableType,
         ipo_type: ipoType,
@@ -308,6 +327,11 @@ const InwardStoreSheet = ({ onBack }) => {
         vpo: selectedIssuedVpo || null,
         ipc: selectedIpc || null,
         goods_receiving_condition: goodsReceivingCondition,
+        goods_receiving_condition_image: goodsConditionUrl || "",
+        vehicle_number_image: vehicleNumberUrl || "",
+        vehicle_pic: vehiclePicUrl || "",
+        vendor_challan_image: vendorChallanUrl || "",
+        vendor_invoice_image: isChallanOnly ? "" : vendorInvoiceUrl || "",
         vendor_challan_no: vendorChallanNo,
         vendor_invoice_no: isChallanOnly ? "" : vendorInvoiceNo,
         items: rows.map((row, idx) => ({

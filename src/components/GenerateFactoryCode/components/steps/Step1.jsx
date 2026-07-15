@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import SpecSection from '../cutting/SpecSection';
@@ -20,30 +20,33 @@ const Step1 = ({
   propagateClubs,
   markSewMovedToAssembly,
   onProceedToSelector,
+  onPrev,
+  onNext,
   validateStep1,
   handleSave,
   showSaveMessage = false,
-  isSaved: parentIsSaved = false,
   onValidationFail,
   renderHeaderAction,
 }) => {
-  const [saveStatus, setSaveStatus] = useState('idle'); // 'idle' | 'success' | 'error'
-  // Start "unsaved" — the button turns green only after an actual Save in this
-  // view, so an unfilled step never falsely reads as "Saved" on entry.
-  const [isSaved, setIsSaved] = useState(false);
+  const [saveStatus, setSaveStatus] = useState('idle'); // 'idle' | 'error' (transient)
   const [activeTab, setActiveTab] = useState('cutting'); // 'cutting' | 'sewing' | 'finishing'
   const [cuttingSection, setCuttingSection] = useState('spec'); // 'spec' | 'process'
   const [sewingSection, setSewingSection] = useState('spec');
   const assignments = formData?.processAssignments || { cutting: { clubs: [] }, sewing: { clubs: [] } };
 
-  useEffect(() => {
-    // Only reflect the *unsaved* signal from the parent (e.g. after an edit).
-    // Never auto-show "Saved" — that only happens via an actual Save (onSave).
-    if (!parentIsSaved) {
-      setIsSaved(false);
-      setSaveStatus('idle');
-    }
-  }, [parentIsSaved]);
+  // "Saved" reflects the real state: green only when the step's data is COMPLETE and
+  // UNCHANGED since the last save/load; "Save" when incomplete or edited. A signature
+  // of the step's data + a snapshot taken on (re)mount/save drives the dirty check, so
+  // reopening a saved IPC shows "Saved" without re-clicking.
+  const stepSig = JSON.stringify(
+    { rm: formData?.rawMaterials, pa: formData?.processAssignments },
+    (k, v) => (typeof File !== 'undefined' && v instanceof File ? '' : v)
+  );
+  const savedSigRef = useRef(stepSig);
+  useEffect(() => { savedSigRef.current = stepSig; }, []); // snapshot on mount = loaded data
+  const dirty = savedSigRef.current !== stepSig;
+  // "Saved" = no unsaved changes since load/save; "Save" appears the moment you edit.
+  const showSaved = !dirty && saveStatus !== 'error';
 
   const onSave = () => {
     if (validateStep1) {
@@ -56,13 +59,25 @@ const Step1 = ({
       }
     }
     handleSave?.();
-    setSaveStatus('success');
-    setIsSaved(true);
+    savedSigRef.current = stepSig; // this data is now the saved baseline
+    setSaveStatus('idle');
     return true;
   };
 
   // Save this step, then advance to the given tab.
   const saveAndGo = (tab) => { onSave(); setActiveTab(tab); };
+
+  // Reusable Save button — placed at the bottom of each section, beside Next.
+  const saveBtn = (
+    <Button
+      type="button"
+      onClick={onSave}
+      variant="outline"
+      className={cn('min-w-[90px]', saveStatus === 'error' ? 'text-red-600 border-red-500 hover:text-red-700' : showSaved ? 'text-green-600 hover:text-green-700' : '')}
+    >
+      {saveStatus === 'error' ? 'Not Saved' : showSaved ? 'Saved' : 'Save'}
+    </Button>
+  );
 
   const tabBtn = (key, active) =>
     `rounded-lg border px-4 py-2 text-sm font-medium ${active ? 'border-primary bg-accent text-foreground' : 'border-border text-muted-foreground hover:bg-muted/50'}`;
@@ -87,8 +102,10 @@ const Step1 = ({
             handleWorkOrderChange={handleWorkOrderChange}
             removeWorkOrder={removeWorkOrder}
           />
-          {/* Linear flow: Spec → Process (of the same tab). */}
-          <div className="flex justify-end" style={{ marginTop: '16px' }}>
+          {/* Linear flow: Spec → Process (of the same tab). Save sits beside Next. */}
+          <div className="flex flex-wrap justify-end items-center gap-3" style={{ marginTop: '16px' }}>
+            {showSaveMessage && <span className="text-red-600 text-sm font-medium">Save first</span>}
+            {saveBtn}
             <Button type="button" onClick={() => setSection('process')}>Next →</Button>
           </div>
         </>
@@ -103,6 +120,7 @@ const Step1 = ({
           unclubClub={unclubClub}
           modeAction={modeAction}
           finalAction={finalAction}
+          saveBtn={kind === 'cutting' ? saveBtn : null}
         />
       )}
     </div>
@@ -119,24 +137,11 @@ const Step1 = ({
         {renderHeaderAction}
       </div>
 
-      {/* Cut, Sew & Finishing tabs + step Save */}
-      <div className="flex flex-wrap items-center justify-between gap-3" style={{ marginBottom: '20px' }}>
-        <div className="flex flex-wrap gap-2">
-          {[['cutting', 'Cutting'], ['sewing', 'Sewing'], ['finishing', 'Finishing']].map(([key, label]) => (
-            <button key={key} type="button" onClick={() => setActiveTab(key)} className={tabBtn(key, activeTab === key)}>{label}</button>
-          ))}
-        </div>
-        <div className="flex items-center gap-3">
-          {showSaveMessage && <span className="text-red-600 text-sm font-medium">Save first</span>}
-          <Button
-            type="button"
-            onClick={onSave}
-            variant="outline"
-            className={cn('min-w-[90px]', saveStatus === 'error' ? 'text-red-600 border-red-500 hover:text-red-700' : isSaved || saveStatus === 'success' ? 'text-green-600 hover:text-green-700' : '')}
-          >
-            {saveStatus === 'error' ? 'Not Saved' : isSaved || saveStatus === 'success' ? 'Saved' : 'Save'}
-          </Button>
-        </div>
+      {/* Cut, Sew & Finishing tabs */}
+      <div className="flex flex-wrap items-center gap-2" style={{ marginBottom: '20px' }}>
+        {[['cutting', 'Cutting'], ['sewing', 'Sewing'], ['finishing', 'Finishing']].map(([key, label]) => (
+          <button key={key} type="button" onClick={() => setActiveTab(key)} className={tabBtn(key, activeTab === key)}>{label}</button>
+        ))}
       </div>
 
       {activeTab === 'cutting' && renderProcessTab({
@@ -155,17 +160,12 @@ const Step1 = ({
       {activeTab === 'sewing' && renderProcessTab({
         woType: 'SEWING', prefix: 'sew', sizeLabel: 'SEW SIZE', kind: 'sewing',
         section: sewingSection, setSection: setSewingSection,
-        // Sewing: per-mode "move to assembly" (save + popup + remembered flag);
-        // final "forward to pack" enabled only when every component is assigned.
+        // Sewing: per-mode "move to assembly" (save + popup + remembered flag).
+        // The "Sew as IPC & Forward to Pack" step lives in the bottom nav below.
         modeAction: {
           label: 'Save & Move to IPC Assembly',
           onClick: () => { onSave(); markSewMovedToAssembly?.(); },
           notice: 'This stitching is now moving to the assembly line.',
-        },
-        finalAction: {
-          label: 'Sew as IPC & Forward to Pack',
-          onClick: () => saveAndGo('finishing'),
-          requireAllAssigned: true,
         },
       })}
 
@@ -176,10 +176,19 @@ const Step1 = ({
             // Mandatory: every FINISHING work order must have a process + a type.
             const finWos = (formData?.rawMaterials || []).flatMap((m) =>
               (m.workOrders || []).filter((wo) => wo?.workOrder === 'FINISHING'));
-            const finishingComplete = finWos.every((wo) => wo.finishingProcess?.toString().trim() && (wo.finishingTypes || []).length > 0);
+            const groupsOf = (wo) => {
+              if (Array.isArray(wo.finishingGroups) && wo.finishingGroups.length) return wo.finishingGroups;
+              if (wo.finishingProcess || (wo.finishingTypes || []).length) return [{ process: wo.finishingProcess, types: wo.finishingTypes || [] }];
+              return [];
+            };
+            const finishingComplete = finWos.every((wo) => {
+              const groups = groupsOf(wo);
+              return groups.length > 0 && groups.every((g) => g.process?.toString().trim() && (g.types || []).length > 0);
+            });
             return (
-              <div className="flex items-center justify-end gap-3" style={{ marginTop: '16px' }}>
+              <div className="flex flex-wrap items-center justify-end gap-3" style={{ marginTop: '16px' }}>
                 {!finishingComplete && <span className="text-xs text-amber-600">Fill Finishing Process + Type for every component's finishing work order.</span>}
+                {saveBtn}
                 <Button
                   type="button"
                   disabled={!finishingComplete}
@@ -192,6 +201,19 @@ const Step1 = ({
           })()}
         </div>
       )}
+
+      {/* Bottom navigation.
+          • Next →  advances to the Finishing section (linear flow).
+          • Sew as IPC & Forward to Pack →  finalises this IPC and returns to the IPC
+            selector (packaging). It sits between Previous and Next and only shows on
+            the Sewing · Process section, where the stitching is declared ready. */}
+      <div className="flex flex-wrap justify-end items-center gap-3" style={{ marginTop: '8px' }}>
+        <Button type="button" variant="outline" onClick={onPrev}>← Previous</Button>
+        {activeTab === 'sewing' && sewingSection === 'process' && (
+          <Button type="button" variant="outline" onClick={onNext}>Sew as IPC &amp; Forward to Pack →</Button>
+        )}
+        <Button type="button" onClick={() => saveAndGo('finishing')}>Next →</Button>
+      </div>
     </div>
   );
 };

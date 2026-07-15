@@ -80,13 +80,12 @@ const HoverPanel = ({
         <div
           className="hover-panel-group"
           ref={hoverPanelRef}
-          onMouseLeave={() => setHoveredSubmenu(null)}
         >
           <div className="hover-panel">
             <div className="hover-panel-column">
               <button
                 className={`hover-panel-item ${activeCategory === "buyer" ? "active" : ""}`}
-                onMouseEnter={() =>
+                onClick={() =>
                   setHoveredSubmenu({
                     menu: "code-creation",
                     category: "buyer",
@@ -97,7 +96,7 @@ const HoverPanel = ({
               </button>
               <button
                 className={`hover-panel-item ${activeCategory === "vendor" ? "active" : ""}`}
-                onMouseEnter={() =>
+                onClick={() =>
                   setHoveredSubmenu({
                     menu: "code-creation",
                     category: "vendor",
@@ -108,7 +107,7 @@ const HoverPanel = ({
               </button>
               <button
                 className={`hover-panel-item ${activeCategory === "company-essentials" ? "active" : ""}`}
-                onMouseEnter={() =>
+                onClick={() =>
                   setHoveredSubmenu({
                     menu: "code-creation",
                     category: "company-essentials",
@@ -119,7 +118,7 @@ const HoverPanel = ({
               </button>
               <button
                 className={`hover-panel-item ${activeCategory === "internal-purchase-order" ? "active" : ""}`}
-                onMouseEnter={() =>
+                onClick={() =>
                   setHoveredSubmenu({
                     menu: "code-creation",
                     category: "internal-purchase-order",
@@ -325,7 +324,6 @@ const HoverPanel = ({
         <div
           className="hover-panel-group"
           ref={hoverPanelRef}
-          onMouseLeave={() => setHoveredSubmenu(null)}
         >
           <div className="hover-panel">
             <div className="hover-panel-column">
@@ -335,7 +333,7 @@ const HoverPanel = ({
                   key={cat.key}
                   type="button"
                   className={`hover-panel-item ${activeCategory === cat.key ? "active" : ""}`}
-                  onMouseEnter={() =>
+                  onClick={() =>
                     setHoveredSubmenu({
                       menu: "ipo-management",
                       category: cat.key,
@@ -364,7 +362,7 @@ const HoverPanel = ({
                         key={code}
                         type="button"
                         className={`hover-panel-item ${activeIpoCode === code ? "active" : ""}`}
-                        onMouseEnter={() =>
+                        onClick={() =>
                           setHoveredSubmenu({
                             menu: "ipo-management",
                             category: activeCategory,
@@ -439,7 +437,6 @@ const HoverPanel = ({
         <div
           className="hover-panel-group"
           ref={hoverPanelRef}
-          onMouseLeave={() => setHoveredSubmenu(null)}
         >
           <div className="hover-panel">
             <div className="hover-panel-column">
@@ -449,7 +446,7 @@ const HoverPanel = ({
                   key={cat.key}
                   type="button"
                   className={`hover-panel-item ${activeCategory === cat.key ? "active" : ""}`}
-                  onMouseEnter={() =>
+                  onClick={() =>
                     setHoveredSubmenu({ menu: "purchase", category: cat.key })
                   }
                 >
@@ -522,7 +519,6 @@ const HoverPanel = ({
         <div
           className="hover-panel-group"
           ref={hoverPanelRef}
-          onMouseLeave={() => setHoveredSubmenu(null)}
         >
           <div className="hover-panel">
             <div className="hover-panel-column">
@@ -530,7 +526,7 @@ const HoverPanel = ({
               <button
                 type="button"
                 className={`hover-panel-item ${activeSection === "inward" || ["inward-store-sheet", "inward-store-sheet-db"].includes(activePage) ? "active" : ""}`}
-                onMouseEnter={() =>
+                onClick={() =>
                   setHoveredSubmenu({
                     menu: "ims",
                     section: "inward",
@@ -544,7 +540,7 @@ const HoverPanel = ({
               <button
                 type="button"
                 className={`hover-panel-item ${activeSection === "outward" || ["outward-store-sheet", "outward-store-sheet-db"].includes(activePage) ? "active" : ""}`}
-                onMouseEnter={() =>
+                onClick={() =>
                   setHoveredSubmenu({
                     menu: "ims",
                     section: "outward",
@@ -558,7 +554,7 @@ const HoverPanel = ({
               <button
                 type="button"
                 className={`hover-panel-item ${activeSection === "stock" || ["stock-sheet", "stock-sheet-db"].includes(activePage) ? "active" : ""}`}
-                onMouseEnter={() =>
+                onClick={() =>
                   setHoveredSubmenu({
                     menu: "ims",
                     section: "stock",
@@ -572,7 +568,7 @@ const HoverPanel = ({
               <button
                 type="button"
                 className={`hover-panel-item ${activeSection === "courier" || activePage === "courier-slip" || activePage === "courier-master" ? "active" : ""}`}
-                onMouseEnter={() =>
+                onClick={() =>
                   setHoveredSubmenu({
                     menu: "ims",
                     section: "courier",
@@ -717,7 +713,7 @@ const HoverPanel = ({
                     key={`${activeSection}-${actionsBySection[activeSection]?.key}`}
                     type="button"
                     className={`hover-panel-item ${activeAction === actionsBySection[activeSection]?.key ? "active" : ""}`}
-                    onMouseEnter={() =>
+                    onClick={() =>
                       setHoveredSubmenu({
                         menu: "ims",
                         section: activeSection,
@@ -744,7 +740,7 @@ const HoverPanel = ({
                       key={`${activeSection}-${cat.key}`}
                       type="button"
                       className={`hover-panel-item ${activeCategory === cat.key ? "active" : ""}`}
-                      onMouseEnter={() =>
+                      onClick={() =>
                         setHoveredSubmenu({
                           menu: "ims",
                           section: activeSection,
@@ -853,7 +849,6 @@ const HoverPanel = ({
         <div
           className="hover-panel-group"
           ref={hoverPanelRef}
-          onMouseLeave={() => setHoveredSubmenu(null)}
         >
           <div className="hover-panel">
             <div className="hover-panel-column">
@@ -861,16 +856,6 @@ const HoverPanel = ({
               <button
                 type="button"
                 className={`hover-panel-item ${activeAction === "assigned" ? "active" : ""}`}
-                onMouseEnter={() =>
-                  setHoveredSubmenu({
-                    menu: "tasks",
-                    action: "assigned",
-                    type: null,
-                    ipo: null,
-                    department: null,
-                    user: null,
-                  })
-                }
                 onClick={() => {
                   setTasksView("assigned");
                   setActivePage("tasks");
@@ -882,7 +867,7 @@ const HoverPanel = ({
               <button
                 type="button"
                 className={`hover-panel-item ${activeAction === "assign" ? "active" : ""}`}
-                onMouseEnter={() =>
+                onClick={() =>
                   setHoveredSubmenu({
                     menu: "tasks",
                     action: "assign",
@@ -892,11 +877,6 @@ const HoverPanel = ({
                     user: null,
                   })
                 }
-                onClick={() => {
-                  setTasksView("assign");
-                  setActivePage("tasks");
-                  setHoveredMenu(null);
-                }}
               >
                 Assign Tasks
               </button>
@@ -912,7 +892,7 @@ const HoverPanel = ({
                     key={po.key}
                     type="button"
                     className={`hover-panel-item ${activeType === po.key ? "active" : ""}`}
-                    onMouseEnter={() =>
+                    onClick={() =>
                       setHoveredSubmenu({
                         menu: "tasks",
                         action: activeAction,
@@ -939,7 +919,7 @@ const HoverPanel = ({
                     key={ipo.key}
                     type="button"
                     className={`hover-panel-item ${activeIpo === ipo.key ? "active" : ""}`}
-                    onMouseEnter={() =>
+                    onClick={() =>
                       setHoveredSubmenu({
                         menu: "tasks",
                         action: activeAction,
@@ -969,7 +949,7 @@ const HoverPanel = ({
                     key={dept}
                     type="button"
                     className={`hover-panel-item ${activeDepartment === dept ? "active" : ""}`}
-                    onMouseEnter={() =>
+                    onClick={() =>
                       setHoveredSubmenu({
                         menu: "tasks",
                         action: activeAction,
@@ -996,7 +976,7 @@ const HoverPanel = ({
                     key={user}
                     type="button"
                     className={`hover-panel-item ${activeUser === user ? "active" : ""}`}
-                    onMouseEnter={() =>
+                    onClick={() =>
                       setHoveredSubmenu({
                         menu: "tasks",
                         action: activeAction,

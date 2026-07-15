@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/button';
 const SLIDE = 'transform 380ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 200ms ease 180ms';
 const CLUB_TINTS = ['#f97316', '#0ea5e9', '#22c55e', '#a855f7', '#ef4444', '#eab308'];
 
-const ProcessSection = ({ formData, woType, prefix, kind, clubs = [], clubComponents, unclubClub, modeAction, finalAction }) => {
+const ProcessSection = ({ formData, woType, prefix, kind, clubs = [], clubComponents, unclubClub, modeAction, finalAction, saveBtn = null }) => {
   const [selected, setSelected] = useState({});        // single component name -> bool
   const [selectedClubs, setSelectedClubs] = useState({}); // club id -> bool
   const [notice, setNotice] = useState('');
@@ -37,27 +37,14 @@ const ProcessSection = ({ formData, woType, prefix, kind, clubs = [], clubCompon
   const showClub = selectedCount >= 2;
   const showUnclub = selectedClubCount >= 1;
 
-  // A component's "plan" for this stage = the sorted set of its woType work orders
-  // with their size. Components can only be clubbed when their plans are identical.
-  const planSig = (name) => JSON.stringify(
-    rawMaterials
-      .filter((m) => m?.componentName === name)
-      .flatMap((m) => (m.workOrders || [])
-        .filter((wo) => wo?.workOrder === woType)
-        .map((wo) => ({ w: wo.workOrder, l: wo[`${prefix}Length`] || '', wd: wo[`${prefix}Width`] || '', u: wo[`${prefix}Unit`] || '' })))
-      .sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)))
-  );
-
+  // Clubs just group components under a name (no size / work-order justification);
+  // any two or more can be clubbed.
   const doClub = () => {
     const names = singles.filter((r) => selected[r.name]).map((r) => r.name);
     if (names.length < 2) return;
-    const sigs = names.map(planSig);
-    if (!sigs.every((s) => s === sigs[0])) {
-      setNotice(`These components have different ${woType.toLowerCase()} plans (work orders / size), so they can’t be clubbed — they stay single.`);
-      return;
-    }
     clubComponents(kind, names);
     setSelected({});
+    setNotice(`${names.join(' and ')} clubbed — this ${kind} club will reflect in the Inward / Outward Store sheets.`);
   };
   const doUnclub = () => {
     Object.entries(selectedClubs).filter(([, v]) => v).forEach(([id]) => unclubClub(kind, id));
@@ -76,12 +63,6 @@ const ProcessSection = ({ formData, woType, prefix, kind, clubs = [], clubCompon
 
   return (
     <div>
-      <p className="text-xs text-muted-foreground" style={{ marginBottom: '12px' }}>
-        Each component is processed <b>separately (isolation)</b> by default. Tick two or more and
-        press <b>CLUB</b> to <b>merge them into one component</b> — cut &amp; sewn together, and carried
-        into Sewing as one merged unit. Tick a merged component and press <b>ISOLATE</b> to split it back.
-      </p>
-
       <div style={{ position: 'relative' }}>
         {/* Slide-up CLUB / UNCLUB buttons (same animation as IPO Master CNS) */}
         <button
@@ -161,6 +142,7 @@ const ProcessSection = ({ formData, woType, prefix, kind, clubs = [], clubCompon
 
       {/* Actions */}
       <div className="flex flex-wrap items-center justify-end gap-3" style={{ marginTop: '16px' }}>
+        {saveBtn}
         {kind === 'sewing' && formData?.sewAssemblyMoved && (
           <span className="mr-auto rounded-full bg-green-100 text-green-700 text-xs font-medium" style={{ padding: '4px 12px' }}>
             ✓ In IPC assembly line
@@ -176,8 +158,22 @@ const ProcessSection = ({ formData, woType, prefix, kind, clubs = [], clubCompon
 
       {notice && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={() => setNotice('')}>
-          <div className="rounded-xl border border-border bg-card shadow-lg" style={{ padding: '20px 24px', maxWidth: '360px' }} onClick={(e) => e.stopPropagation()}>
-            <p className="text-sm text-foreground" style={{ marginBottom: '16px' }}>{notice}</p>
+          <div className="rounded-xl border border-border bg-card shadow-lg" style={{ padding: '20px 24px', maxWidth: '420px' }} onClick={(e) => e.stopPropagation()}>
+            <p className="text-sm text-foreground" style={{ marginBottom: '12px' }}>{notice}</p>
+            {/* On a forward/assembly popup, show the club/single breakdown being sent. */}
+            {modeAction?.notice && notice === modeAction.notice && (
+              <div className="rounded-lg border border-border bg-muted/40 text-xs" style={{ padding: '10px 12px', marginBottom: '16px' }}>
+                {clubs.map((c) => (
+                  <div key={c.id} className="text-foreground" style={{ marginBottom: '4px' }}>
+                    <span className="font-semibold">{c.label}:</span> {c.components.join('  +  ')} <span className="text-muted-foreground">(merged)</span>
+                  </div>
+                ))}
+                {singles.map((r) => (
+                  <div key={r.name} className="text-muted-foreground" style={{ marginBottom: '2px' }}>{r.name} <span>(single)</span></div>
+                ))}
+                {clubs.length === 0 && singles.length === 0 && <div className="text-muted-foreground">No components.</div>}
+              </div>
+            )}
             <div className="flex justify-end">
               {/* Only the mode-action popup carries onContinue (e.g. → sewing). The
                   club-mismatch popup just needs OK. */}

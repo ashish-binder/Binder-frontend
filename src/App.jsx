@@ -95,9 +95,13 @@ function App() {
             }
           />
           
-          {/* All dashboard routes lead to the same Dashboard component */}
+          {/* All dashboard routes lead to the same Dashboard component.
+              The splat (*) matches any depth so deep views such as
+              /dashboard/code-creation/buyer-existing keep matching this
+              route (instead of falling through to the "*" redirect) and
+              therefore survive a page refresh. */}
           <Route
-            path="/dashboard"
+            path="/dashboard/*"
             element={
               <ProtectedRoute>
                 <Dashboard />
@@ -105,16 +109,7 @@ function App() {
             }
           />
           <Route
-            path="/dashboard/:section"
-            element={
-              <ProtectedRoute>
-                <Dashboard />
-              </ProtectedRoute>
-            }
-          />
-          
-          <Route
-            path="/admin/dashboard"
+            path="/admin/dashboard/*"
             element={
               <ProtectedRoute>
                 <Dashboard />
@@ -122,16 +117,7 @@ function App() {
             }
           />
           <Route
-            path="/admin/dashboard/:section"
-            element={
-              <ProtectedRoute>
-                <Dashboard />
-              </ProtectedRoute>
-            }
-          />
-          
-          <Route
-            path="/manager/dashboard"
+            path="/manager/dashboard/*"
             element={
               <ProtectedRoute>
                 <Dashboard />
@@ -139,24 +125,7 @@ function App() {
             }
           />
           <Route
-            path="/manager/dashboard/:section"
-            element={
-              <ProtectedRoute>
-                <Dashboard />
-              </ProtectedRoute>
-            }
-          />
-          
-          <Route
-            path="/tenant/dashboard"
-            element={
-              <ProtectedRoute>
-                <Dashboard />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/tenant/dashboard/:section"
+            path="/tenant/dashboard/*"
             element={
               <ProtectedRoute>
                 <Dashboard />

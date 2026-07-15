@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { FiEye, FiPrinter, FiTrash2 } from 'react-icons/fi';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import Pagination from '@/components/ui/Pagination';
 import { getCompanyEssentials, deleteCompanyEssential } from '../services/integration';
-import { useLoading } from '../context/LoadingContext';
+import { useServerPagination } from '../hooks/useServerPagination';
 
 const extractItems = (payload) => {
   if (Array.isArray(payload)) return payload;
@@ -11,6 +12,31 @@ const extractItems = (payload) => {
   if (Array.isArray(payload?.data)) return payload.data;
   if (Array.isArray(payload?.data?.results)) return payload.data.results;
   return [];
+};
+
+const getCount = (payload, fallback) => {
+  if (Number.isFinite(payload?.count)) return payload.count;
+  if (Number.isFinite(payload?.data?.count)) return payload.data.count;
+  return fallback;
+};
+
+// Fixed category set (mirrors CompanyEssential.CATEGORY_CHOICES on the backend)
+// so the filter dropdown is complete regardless of which page is loaded.
+const CATEGORY_OPTIONS = [
+  'STATIONARY', 'PANTRY', 'MACHINERY', 'HOUSEKEEPING', 'ELECTRICALS',
+  'HARDWARE_CHEMICALS', 'AUDIT_COMPLIANCE', 'IT', 'QC_TOOLS',
+  'TRAVEL_EXPENSE', 'REPAIR', 'MAINTENANCE',
+];
+
+// Table column -> backend ordering field.
+const SORT_FIELDS = {
+  code: 'code',
+  category: 'category',
+  itemDescription: 'item_description',
+  quantity: 'quantity',
+  takenByName: 'taken_by_name',
+  paymentMethod: 'payment_method',
+  date: 'entry_date',
 };
 
 const normalizeEssential = (item) => ({
@@ -92,60 +118,49 @@ const resolveQuantityLabel = (item) => {
 };
 
 const CompanyEssentialsMasterSheet = ({ onBack }) => {
-  const [items, setItems] = useState([]);
-  const [searchTerm, setSearchTerm] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('ALL');
-  const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' });
   const [selectedItem, setSelectedItem] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const { showLoading, hideLoading } = useLoading();
 
+  const fetchPage = useCallback(({ page, pageSize, search, ordering }) => {
+    const params = { page, page_size: pageSize };
+    if (search) params.search = search;
+    if (ordering) params.ordering = ordering;
+    const category = categoryFilter !== 'ALL' ? categoryFilter : undefined;
+    return getCompanyEssentials(category, params).then((res) => {
+      const list = extractItems(res).map(normalizeEssential);
+      return { results: list, count: getCount(res, list.length) };
+    });
+  }, [categoryFilter]);
+
+  const {
+    items,
+    count,
+    page,
+    setPage,
+    pageSize,
+    loading,
+    error,
+    searchInput,
+    setSearchInput,
+    ordering,
+    toggleSort,
+    refresh,
+  } = useServerPagination(fetchPage, { pageSize: 10, initialOrdering: '-entry_date' });
+
+  // Re-fetch from page 1 whenever the category filter changes (skip first run —
+  // the hook already does the initial fetch).
+  const didMountRef = useRef(false);
   useEffect(() => {
-    const fetchEssentials = async () => {
-      showLoading();
-      try {
-        setLoading(true);
-        setError(null);
-        const response = await getCompanyEssentials();
-        const list = extractItems(response).map(normalizeEssential);
-        setItems(list);
-      } catch (err) {
-        console.warn('Failed to load company essentials:', err);
-        setError('Failed to load company essentials. Please try again.');
-      } finally {
-        setLoading(false);
-        hideLoading();
-      }
-    };
-    fetchEssentials();
-  }, [showLoading, hideLoading]);
+    if (!didMountRef.current) {
+      didMountRef.current = true;
+      return;
+    }
+    setPage(1);
+    refresh();
+  }, [categoryFilter, setPage, refresh]);
 
-  const categories = Array.from(
-    new Set(items.map((it) => it.category).filter(Boolean))
-  ).sort();
-
-  const filteredItems = items.filter((item) => {
-    if (categoryFilter !== 'ALL' && item.category !== categoryFilter) return false;
-    const q = searchTerm.trim().toLowerCase();
-    if (!q) return true;
-    return (
-      String(item.code).toLowerCase().includes(q) ||
-      String(item.category).toLowerCase().includes(q) ||
-      String(item.department).toLowerCase().includes(q) ||
-      String(item.itemDescription).toLowerCase().includes(q) ||
-      String(item.takenByName).toLowerCase().includes(q)
-    );
-  });
-
-  const sortedItems = [...filteredItems].sort((a, b) => {
-    if (!sortConfig.key) return 0;
-    const aValue = a[sortConfig.key] ?? '';
-    const bValue = b[sortConfig.key] ?? '';
-    if (aValue < bValue) return sortConfig.direction === 'asc' ? -1 : 1;
-    if (aValue > bValue) return sortConfig.direction === 'asc' ? 1 : -1;
-    return 0;
-  });
+  const sortField = ordering ? ordering.replace(/^-/, '') : null;
+  const sortDir = ordering && ordering.startsWith('-') ? 'desc' : 'asc';
 
   const handleDelete = async (item) => {
     const ok = window.confirm(
@@ -158,7 +173,11 @@ const CompanyEssentialsMasterSheet = ({ onBack }) => {
     }
     try {
       await deleteCompanyEssential(item.id);
-      setItems((prev) => prev.filter((i) => i.id !== item.id));
+      if (items.length === 1 && page > 1) {
+        setPage(page - 1);
+      } else {
+        refresh();
+      }
     } catch (err) {
       console.error('Failed to delete company essential:', err);
       alert(
@@ -170,11 +189,8 @@ const CompanyEssentialsMasterSheet = ({ onBack }) => {
   };
 
   const handleSort = (key) => {
-    let direction = 'asc';
-    if (sortConfig.key === key && sortConfig.direction === 'asc') {
-      direction = 'desc';
-    }
-    setSortConfig({ key, direction });
+    const field = SORT_FIELDS[key];
+    if (field) toggleSort(field);
   };
 
   const escapeHtml = (value) => {
@@ -305,10 +321,10 @@ const CompanyEssentialsMasterSheet = ({ onBack }) => {
   };
 
   const getSortIcon = (columnKey) => {
-    if (sortConfig.key !== columnKey) {
+    if (sortField !== SORT_FIELDS[columnKey]) {
       return <span style={{ marginLeft: '8px', fontSize: '12px', opacity: 0.7 }}>↕</span>;
     }
-    return sortConfig.direction === 'asc' ? (
+    return sortDir === 'asc' ? (
       <span style={{ marginLeft: '8px', fontSize: '12px', color: 'var(--primary)' }}>↑</span>
     ) : (
       <span style={{ marginLeft: '8px', fontSize: '12px', color: 'var(--primary)' }}>↓</span>
@@ -449,9 +465,9 @@ const CompanyEssentialsMasterSheet = ({ onBack }) => {
           <div style={{ flex: 1, minWidth: '260px', maxWidth: '500px' }}>
             <Input
               type="text"
-              placeholder="Search by code, category, department, item or person..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Search by code or item description..."
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
             />
           </div>
           <select
@@ -468,27 +484,27 @@ const CompanyEssentialsMasterSheet = ({ onBack }) => {
             }}
           >
             <option value="ALL">All categories</option>
-            {categories.map((cat) => (
+            {CATEGORY_OPTIONS.map((cat) => (
               <option key={cat} value={cat}>{cat}</option>
             ))}
           </select>
           <div className="text-sm text-muted-foreground">
-            Total: <strong className="text-foreground">{filteredItems.length}</strong>
+            Total: <strong className="text-foreground">{count}</strong>
           </div>
         </div>
 
-        {loading ? (
+        {loading && items.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '48px', color: 'var(--muted-foreground)' }}>
             Loading company essentials...
           </div>
         ) : error ? (
           <div style={{ textAlign: 'center', padding: '48px', color: 'var(--destructive)' }}>
-            {error}
+            Failed to load company essentials. Please try again.
           </div>
-        ) : sortedItems.length === 0 ? (
+        ) : items.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '48px', color: 'var(--muted-foreground)' }}>
             No company essentials records found
-            {searchTerm || categoryFilter !== 'ALL' ? ' matching your filters' : ''}.
+            {searchInput || categoryFilter !== 'ALL' ? ' matching your filters' : ''}.
           </div>
         ) : (
           <div
@@ -497,6 +513,8 @@ const CompanyEssentialsMasterSheet = ({ onBack }) => {
               borderRadius: 'var(--radius-lg)',
               overflowX: 'auto',
               backgroundColor: 'var(--card)',
+              opacity: loading ? 0.6 : 1,
+              transition: 'opacity 0.15s',
             }}
           >
             <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '1280px' }}>
@@ -532,11 +550,11 @@ const CompanyEssentialsMasterSheet = ({ onBack }) => {
                 </tr>
               </thead>
               <tbody>
-                {sortedItems.map((item, index) => (
+                {items.map((item, index) => (
                   <tr
                     key={item.id || `${item.code}-${index}`}
                     style={{
-                      borderBottom: index < sortedItems.length - 1 ? '1px solid var(--border)' : 'none',
+                      borderBottom: index < items.length - 1 ? '1px solid var(--border)' : 'none',
                       transition: 'background-color 0.15s',
                     }}
                     onMouseEnter={(e) => {
@@ -609,20 +627,13 @@ const CompanyEssentialsMasterSheet = ({ onBack }) => {
           </div>
         )}
 
-        {!loading && !error && sortedItems.length > 0 && (
-          <div
-            style={{
-              marginTop: '24px',
-              padding: '12px 16px',
-              backgroundColor: 'var(--muted)',
-              borderRadius: 'var(--radius-md)',
-              fontSize: '14px',
-              color: 'var(--muted-foreground)',
-            }}
-          >
-            Showing {filteredItems.length} of {items.length} records
-          </div>
-        )}
+        <Pagination
+          page={page}
+          pageSize={pageSize}
+          totalCount={count}
+          onPageChange={setPage}
+          disabled={loading}
+        />
       </div>
 
       {selectedItem && (

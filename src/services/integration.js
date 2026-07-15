@@ -779,8 +779,9 @@ export const previewNextVendorCode = async () => {
 /**
  * Get vendor master sheet
  */
-export const getVendorMasterSheet = async () => {
-  const response = await apiRequest('ims/vendor-codes/master-sheet/');
+export const getVendorMasterSheet = async (params = {}) => {
+  const query = new URLSearchParams(params).toString();
+  const response = await apiRequest(`ims/vendor-codes/master-sheet/${query ? '?' + query : ''}`);
   return await response.json();
 };
 
@@ -860,6 +861,24 @@ export const getIPOs = async (params = {}) => {
 
 export const getIPO = async (ipoId) => {
   const response = await apiRequest(`ims/ipos/${ipoId}/`);
+  return await response.json();
+};
+
+// Mark IPOs completed (or active again) — persisted server-side, tenant-wide.
+export const setIposCompleted = async (ids, completed = true) => {
+  const response = await apiRequest('ims/ipos/set-completed/', {
+    method: 'POST',
+    body: JSON.stringify({ ids, completed }),
+  });
+  return await response.json();
+};
+
+// Return every completed IPO for the tenant back to active.
+export const clearCompletedIpos = async () => {
+  const response = await apiRequest('ims/ipos/clear-completed/', {
+    method: 'POST',
+    body: JSON.stringify({}),
+  });
   return await response.json();
 };
 

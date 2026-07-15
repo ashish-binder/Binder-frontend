@@ -3,7 +3,6 @@
 // GenerateFactoryCode orchestrator and arrives via props.
 import QualityVerificationToggle from '../QualityVerificationToggle';
 import SearchableDropdown from '../SearchableDropdown';
-import WorkOrderDateFields from '../WorkOrderDateFields';
 import { BRAIDING_APPROVAL_OPTIONS, getBraidingVariants, getBraidingDesigns, getBraidingPatternType, getBraidingStrandCount, getBraidingWidthDiameter } from '../../data/braidingData';
 import { Button } from '@/components/ui/button';
 import { CARPET_APPROVAL_OPTIONS, KNOT_TYPE_OPTIONS, getCarpetVariants, getCarpetDesigns } from '../../data/carpetData';
@@ -2621,16 +2620,6 @@ const WorkOrdersSection = ({
                           onChange={(value) => handleWorkOrderChange(actualIndex, woIndex, 'qualityVerification', value)}
                           width="lg"
                           className="mb-3"
-                        />
-                        <WorkOrderDateFields
-                          startDate={workOrder.startDate}
-                          dateOfCompletion={workOrder.dateOfCompletion}
-                          onChange={(field, value) => handleWorkOrderChange(actualIndex, woIndex, field, value)}
-                          errorStartDate={errors[`rawMaterial_${actualIndex}_workOrder_${woIndex}_startDate`]}
-                          errorDateOfCompletion={errors[`rawMaterial_${actualIndex}_workOrder_${woIndex}_dateOfCompletion`]}
-                          startDateLabel="starting date"
-                          completionDateLabel="completion date"
-                          className="w-full"
                         />
                       </div>
                         </>

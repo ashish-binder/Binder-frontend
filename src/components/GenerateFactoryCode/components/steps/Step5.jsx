@@ -402,10 +402,9 @@ const Step5 = ({
                       source spec fields below so the user edits the origin. */}
                   <div className="flex flex-col" style={{ width: '100%', maxWidth: '640px', marginBottom: '16px' }}>
                     <label className="text-sm font-bold text-gray-800 mb-2">MATERIAL DESC</label>
-                    <input
-                      type="text"
-                      readOnly
-                      value={material.materialDescription || ''}
+                    <div
+                      role="textbox"
+                      tabIndex={0}
                       onClick={() => {
                         if (typeof document !== 'undefined') {
                           const card = document.querySelector(`[data-packaging-material-index="${materialIndex}"]`);
@@ -414,10 +413,13 @@ const Step5 = ({
                         }
                       }}
                       title="Auto-generated from specifications — click to edit the source fields"
-                      placeholder={getPackagingDescriptionSyntax(material.packagingMaterialType) || 'Fill specifications below'}
-                      className="border-2 rounded-lg text-sm bg-gray-100 text-gray-900 border-gray-200 cursor-pointer focus:outline-none"
-                      style={{ padding: '10px 14px', height: '44px' }}
-                    />
+                      className="border-2 rounded-lg text-sm bg-gray-100 border-gray-200 cursor-pointer focus:outline-none w-full break-words [overflow-wrap:anywhere]"
+                      style={{ padding: '10px 14px', minHeight: '44px' }}
+                    >
+                      {material.materialDescription
+                        ? <span className="text-gray-900">{material.materialDescription}</span>
+                        : <span className="text-gray-400">{getPackagingDescriptionSyntax(material.packagingMaterialType) || 'Fill specifications below'}</span>}
+                    </div>
                   </div>
                   <div data-spec-anchor>
                     <PackagingMaterialTypeFields

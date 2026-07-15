@@ -17,8 +17,6 @@ const YarnSpec = ({
   actualIndex,
   errors,
   handleRawMaterialChange,
-  handleProcurementDateChange,
-  todayDate,
   mergeOptions,
   addCustomOption,
 }) => (
@@ -296,22 +294,6 @@ const YarnSpec = ({
                           width="lg"
                           className="mb-3"
                         />
-                      </div>
-                      <div className="w-full max-w-sm" style={{ marginTop: '12px' }}>
-                        <Field
-                          label="PROCUREMENT DATE"
-                          required
-                          width="sm"
-                          error={errors[`rawMaterial_${actualIndex}_procurementDate`]}
-                        >
-                          <Input
-                            type="date"
-                            min={todayDate}
-                            value={material.procurementDate || ''}
-                            aria-invalid={errors[`rawMaterial_${actualIndex}_procurementDate`] ? true : undefined}
-                            onChange={(e) => handleProcurementDateChange(actualIndex, e.target.value)}
-                          />
-                        </Field>
                       </div>
                     </div>
                   );

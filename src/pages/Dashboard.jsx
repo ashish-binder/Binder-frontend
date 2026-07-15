@@ -18,13 +18,6 @@ const resolveDashboardBasePath = (pathname) => {
   return "/dashboard";
 };
 
-const getSectionFromPath = (pathname, basePath) => {
-  if (pathname === basePath || pathname === `${basePath}/`) return null;
-  if (!pathname.startsWith(`${basePath}/`)) return null;
-  const rest = pathname.slice(basePath.length + 1);
-  return rest.split("/")[0] || null;
-};
-
 const sectionToPage = (section) => {
   if (section === "home") return "home";
   if (section === "task" || section === "tasks") return "tasks";
@@ -80,17 +73,108 @@ const pageToSection = (page) => {
   return "home";
 };
 
+// Sub-views that are valid inside each section. These are the second URL
+// segment (e.g. /dashboard/code-creation/buyer-existing) so that the exact
+// screen — not just the section — is restored on refresh / back / forward.
+const CODE_CREATION_VIEWS = [
+  "buyer",
+  "buyer-existing",
+  "vendor",
+  "vendor-existing",
+  "company-essentials",
+  "company-essentials-master",
+  "internal-purchase-order",
+  "internal-purchase-order-master",
+  "completed-ipos",
+  "generate-po",
+];
+const IMS_VIEWS = [
+  "courier-slip",
+  "courier-master",
+  "inward-store-sheet",
+  "inward-store-sheet-db",
+  "outward-store-sheet",
+  "outward-store-sheet-db",
+  "stock-sheet",
+  "stock-sheet-db",
+];
+const QUALITY_VIEWS = ["uqr-forms", "uqr-database"];
+
+// Split "/base/section/view" into its parts (ignores anything deeper).
+const getDashboardSegments = (pathname, basePath) => {
+  if (pathname === basePath || pathname === `${basePath}/`) {
+    return { section: null, view: null };
+  }
+  if (!pathname.startsWith(`${basePath}/`)) {
+    return { section: null, view: null };
+  }
+  const parts = pathname
+    .slice(basePath.length + 1)
+    .split("/")
+    .filter(Boolean);
+  return { section: parts[0] || null, view: parts[1] || null };
+};
+
+// State -> URL. Builds the canonical path for the current screen so the URL
+// always fully describes what is rendered.
+const buildDashboardPath = (basePath, activePage, codeCreationView) => {
+  const section = pageToSection(activePage);
+  let view = null;
+  if (section === "code-creation") {
+    view = CODE_CREATION_VIEWS.includes(codeCreationView)
+      ? codeCreationView
+      : null;
+  } else if (section === "ims" || section === "quality") {
+    // For IMS/Quality the granular sub-page IS the activePage.
+    view = activePage !== section ? activePage : null;
+  }
+  return view ? `${basePath}/${section}/${view}` : `${basePath}/${section}`;
+};
+
+// URL -> State. Inverse of buildDashboardPath; used on load and on
+// back/forward so the page state matches the address bar.
+const resolveDashboardState = (section, view) => {
+  const page = sectionToPage(section);
+  if (!page) return { activePage: "home", codeCreationView: null };
+  if (page === "code-creation") {
+    return {
+      activePage: "code-creation",
+      codeCreationView: CODE_CREATION_VIEWS.includes(view) ? view : null,
+    };
+  }
+  if (page === "ims") {
+    return {
+      activePage: IMS_VIEWS.includes(view) ? view : "ims",
+      codeCreationView: null,
+    };
+  }
+  if (page === "quality") {
+    return {
+      activePage: QUALITY_VIEWS.includes(view) ? view : "quality",
+      codeCreationView: null,
+    };
+  }
+  return { activePage: page, codeCreationView: null };
+};
+
 const Dashboard = () => {
   const { user, logout } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
   const dashboardBasePath = resolveDashboardBasePath(location.pathname);
-  const initialPageFromPath =
-    sectionToPage(getSectionFromPath(location.pathname, dashboardBasePath)) ||
-    "home";
-  const [activePage, setActivePageState] = useState(initialPageFromPath);
+  const initialSegments = getDashboardSegments(
+    location.pathname,
+    dashboardBasePath,
+  );
+  const initialState = resolveDashboardState(
+    initialSegments.section,
+    initialSegments.view,
+  );
+  const [activePage, setActivePageState] = useState(initialState.activePage);
   const [tasksView, setTasksView] = useState("assign");
-  const [codeCreationView, setCodeCreationView] = useState(null);
+  const [codeCreationView, setCodeCreationView] = useState(
+    initialState.codeCreationView,
+  );
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [hoveredMenu, setHoveredMenu] = useState(null);
@@ -113,14 +197,9 @@ const Dashboard = () => {
   const sidebarRef = useRef(null);
   const hoverPanelRef = useRef(null);
 
-  const setActivePage = (nextPage) => {
-    setActivePageState(nextPage);
-    const targetSection = pageToSection(nextPage);
-    const targetPath = `${dashboardBasePath}/${targetSection}`;
-    if (location.pathname !== targetPath) {
-      navigate(targetPath);
-    }
-  };
+  // URL syncing is handled centrally by the effects below (state -> URL and
+  // URL -> state), so navigation just needs to update the page state.
+  const setActivePage = setActivePageState;
 
   const getDisplayName = () => {
     const firstLast = [user?.first_name, user?.last_name]
@@ -180,21 +259,43 @@ const Dashboard = () => {
     }
   }, [user?.tenant_details?.onboarding_completed, navigate]);
 
+  // State -> URL: keep the address bar pointed at the exact screen so a
+  // refresh (or copy/paste of the URL) reopens the same view.
   useEffect(() => {
-    const section = getSectionFromPath(location.pathname, dashboardBasePath);
-    const resolvedPage = sectionToPage(section);
-
-    if (!resolvedPage) {
-      setActivePageState("home");
-      const homePath = `${dashboardBasePath}/home`;
-      if (location.pathname !== homePath) {
-        navigate(homePath, { replace: true });
-      }
-      return;
+    const targetPath = buildDashboardPath(
+      dashboardBasePath,
+      activePage,
+      codeCreationView,
+    );
+    if (location.pathname !== targetPath) {
+      // Replace (don't push) when the current URL has no valid section — i.e.
+      // the bare "/dashboard" landing being normalized to "/dashboard/home" —
+      // so we don't leave a dead entry in the history stack.
+      const { section } = getDashboardSegments(
+        location.pathname,
+        dashboardBasePath,
+      );
+      navigate(targetPath, { replace: !sectionToPage(section) });
     }
+  }, [
+    activePage,
+    codeCreationView,
+    dashboardBasePath,
+    location.pathname,
+    navigate,
+  ]);
 
-    setActivePageState(resolvedPage);
-  }, [location.pathname, dashboardBasePath, navigate]);
+  // URL -> State: on load, refresh and back/forward, rebuild the page state
+  // from the address bar so what's rendered matches the URL.
+  useEffect(() => {
+    const { section, view } = getDashboardSegments(
+      location.pathname,
+      dashboardBasePath,
+    );
+    const next = resolveDashboardState(section, view);
+    setActivePageState(next.activePage);
+    setCodeCreationView(next.codeCreationView);
+  }, [location.pathname, dashboardBasePath]);
 
   const handleLogout = () => {
     logout();

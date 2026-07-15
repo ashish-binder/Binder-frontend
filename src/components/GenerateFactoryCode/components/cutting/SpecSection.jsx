@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import WorkOrdersSection from '../workOrders/WorkOrdersSection';
 
 // Cut/Sew · Section-1 (spec). Flow: SELECT COMPONENT → its work orders of `woType`
@@ -14,6 +14,11 @@ const SpecSection = ({ formData, errors, woType, prefix, sizeLabel, handleWorkOr
   const rawMaterials = formData?.rawMaterials || [];
   const names = [...new Set(components.map((c) => c.productComforter).filter(Boolean))];
   const [selected, setSelected] = useState(names[0] || '');
+  // When the component list loads/changes (e.g. reopening a saved IPC), make sure a
+  // valid component stays selected so its saved data is shown.
+  useEffect(() => {
+    if (names.length && !names.includes(selected)) setSelected(names[0]);
+  }, [names.join('|')]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const compMats = rawMaterials
     .map((m, i) => ({ m, i }))

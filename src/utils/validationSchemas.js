@@ -83,8 +83,11 @@ export const STITCHING_THREAD_SCHEMA = {
 };
 
 // ==================== WORK ORDER SCHEMAS ====================
-const WORK_ORDER_DATE_FIELDS = ['startDate', 'dateOfCompletion'];
-const WORK_ORDER_DATE_LABELS = { startDate: 'starting date', dateOfCompletion: 'completion date' };
+// Starting / completion dates were removed from the IPC Spec work-order form, so they
+// are no longer required. Kept as empty spreads so the per-schema `required` lists and
+// `fieldLabels` below stay untouched (each `...WORK_ORDER_DATE_*` is now a no-op).
+const WORK_ORDER_DATE_FIELDS = [];
+const WORK_ORDER_DATE_LABELS = {};
 
 export const WORK_ORDER_SCHEMAS = {
   ...Object.fromEntries(
