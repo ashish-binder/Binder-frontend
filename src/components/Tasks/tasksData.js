@@ -29,6 +29,11 @@ export const DEPARTMENT_OPTIONS = [
   'Accounts',
 ];
 export const PRIORITY_LEVELS = ['Low', 'Medium', 'High', 'Urgent'];
+export const formatPriorityLabel = (level) => {
+  const base = String(level || 'Low').trim();
+  if (!base) return 'Low Priority';
+  return /priority$/i.test(base) ? base : `${base} Priority`;
+};
 
 export const toOptions = (values) => (values || []).map((v) => ({ value: v, label: v }));
 

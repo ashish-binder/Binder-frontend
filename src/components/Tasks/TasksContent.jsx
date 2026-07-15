@@ -6,7 +6,7 @@
 // board, card, and modals don't need to change.
 import { useEffect, useMemo, useState } from 'react';
 import { DragDropContext } from '@hello-pangea/dnd';
-import { Plus } from 'lucide-react';
+import { Plus, User } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { getIPOs } from '../../services/integration';
 import { normalizeOrderType } from '../../utils/orderType';
@@ -21,14 +21,9 @@ const nextTaskId = () => {
   return `task-local-${taskSeq}-${SAMPLE_TASKS.length + taskSeq}`;
 };
 
-const FILTERS = [
-  { key: 'all', label: 'All Tasks' },
-  { key: 'mine', label: 'My Tasks' },
-];
-
 const TasksContent = () => {
   const [tasks, setTasks] = useState(SAMPLE_TASKS);
-  const [filter, setFilter] = useState('all');
+  const [showMineOnly, setShowMineOnly] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedTask, setSelectedTask] = useState(null);
   const [ipos, setIpos] = useState([]);
@@ -59,11 +54,11 @@ const TasksContent = () => {
       window.removeEventListener('internalPurchaseOrdersUpdated', handleIpoUpdate);
   }, []);
 
-  const isVisible = (task) => filter === 'all' || task.mine;
+  const isVisible = (task) => !showMineOnly || task.mine;
 
   const visibleTasks = useMemo(
-    () => (filter === 'mine' ? tasks.filter((t) => t.mine) : tasks),
-    [tasks, filter],
+    () => (showMineOnly ? tasks.filter((t) => t.mine) : tasks),
+    [tasks, showMineOnly],
   );
 
   const tasksByColumn = useMemo(() => {
@@ -152,25 +147,20 @@ const TasksContent = () => {
           </div>
 
           <div className="flex items-center gap-3">
-            <div className="inline-flex rounded-md border border-[#e2e3e8] bg-muted p-1">
-              {FILTERS.map((f) => {
-                const active = filter === f.key;
-                return (
-                  <button
-                    key={f.key}
-                    type="button"
-                    onClick={() => setFilter(f.key)}
-                    className={`cursor-pointer rounded px-4 py-1.5 text-sm font-semibold transition-all ${
-                      active
-                        ? 'bg-primary text-primary-foreground'
-                        : 'text-muted-foreground hover:text-foreground'
-                    }`}
-                  >
-                    {f.label}
-                  </button>
-                );
-              })}
-            </div>
+            <button
+              type="button"
+              onClick={() => setShowMineOnly((prev) => !prev)}
+              title={showMineOnly ? 'Show all tasks' : 'Show my tasks only'}
+              aria-label={showMineOnly ? 'Show all tasks' : 'Show my tasks only'}
+              aria-pressed={showMineOnly}
+              className={`inline-flex h-10 w-10 cursor-pointer items-center justify-center rounded-md border transition-colors ${
+                showMineOnly
+                  ? 'border-primary bg-primary/10 text-primary'
+                  : 'border-[#e2e3e8] bg-card text-muted-foreground hover:bg-muted hover:text-foreground'
+              }`}
+            >
+              <User className="h-4 w-4" />
+            </button>
             <button
               type="button"
               onClick={() => setIsModalOpen(true)}

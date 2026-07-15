@@ -7,6 +7,7 @@ import {
   LABEL,
   PRIORITY_LEVELS,
   PRIORITY_PILL,
+  formatPriorityLabel,
   getInitials,
   avatarColorFor,
 } from './tasksData';
@@ -48,7 +49,7 @@ export const Avatar = ({ name, size = 'h-7 w-7' }) => (
   </span>
 );
 
-// Small uppercase priority pill shown on cards (e.g. "HIGH").
+// Small uppercase priority pill shown on cards (e.g. "HIGH PRIORITY").
 export const PriorityPill = ({ level }) => {
   const key = level || 'Low';
   return (
@@ -57,7 +58,7 @@ export const PriorityPill = ({ level }) => {
         PRIORITY_PILL[key] || PRIORITY_PILL.Low
       }`}
     >
-      {key}
+      {formatPriorityLabel(key)}
     </span>
   );
 };
@@ -82,7 +83,7 @@ export const PrioritySegmented = ({ value, onChange }) => (
               : 'border-[#e2e3e8] bg-card text-foreground/70 hover:bg-muted'
           }`}
         >
-          {level}
+          {formatPriorityLabel(level)}
         </button>
       );
     })}

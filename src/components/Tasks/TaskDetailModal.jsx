@@ -2,7 +2,7 @@
 import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 import { PriorityPill, Avatar } from './shared';
-import { COLUMNS, formatDueDate } from './tasksData';
+import { COLUMNS, formatDueDate, formatPriorityLabel } from './tasksData';
 
 const Detail = ({ label, value }) => (
   <div className="min-w-0">
@@ -83,7 +83,7 @@ const TaskDetailModal = ({ task, onClose, onMove }) => {
             <Detail label="IPO Reference" value={task.ipo} />
             <Detail label="Sub-Task" value={task.subTask} />
             <Detail label="Due Date" value={formatDueDate(task.dueDate)} />
-            <Detail label="Priority" value={task.priority} />
+            <Detail label="Priority" value={formatPriorityLabel(task.priority)} />
             <Detail label="Attachment" value={attachmentName} />
             {Array.isArray(task.tags) && task.tags.length > 0 && (
               <div className="min-w-0 sm:col-span-2">
