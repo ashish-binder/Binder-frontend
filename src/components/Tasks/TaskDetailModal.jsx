@@ -28,7 +28,11 @@ const TaskDetailModal = ({
   onMove,
   onAddComment,
   currentUserName,
-  isOwner = false,
+  // Server-computed: the task's creator, or a master admin. The board is
+  // tenant-wide, so this is what gates the edit/delete controls.
+  canManage = false,
+  canAccept = false,
+  onAccept,
   onEdit,
   onDelete,
   onUpdateTags,
@@ -76,7 +80,7 @@ const TaskDetailModal = ({
             <h2 className="text-lg font-bold text-foreground">{task.title}</h2>
           </div>
           <div className="flex shrink-0 items-center gap-1">
-            {isOwner && (
+            {canManage && (
               <>
                 <button
                   type="button"
@@ -110,6 +114,30 @@ const TaskDetailModal = ({
 
         {/* Body */}
         <div className="overflow-y-auto px-6 py-5">
+          {/* Awaiting my acceptance — the same action as the sticky toast, so a
+              user who dismissed the toast can still accept from the card. */}
+          {canAccept && (
+            <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-primary/30 bg-primary/5 px-4 py-3">
+              <div>
+                <div className="text-xs font-bold text-foreground">
+                  This task is assigned to you
+                </div>
+                <div className="mt-0.5 text-xs text-muted-foreground">
+                  {task.ownerName
+                    ? `Assigned by ${task.ownerName}. Accept to confirm you've picked it up.`
+                    : "Accept to confirm you've picked it up."}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => onAccept(task.id)}
+                className="shrink-0 cursor-pointer rounded-md bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground transition-all hover:opacity-90"
+              >
+                Accept task
+              </button>
+            </div>
+          )}
+
           {task.description && (
             <div className="mb-5">
               <div className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
@@ -165,7 +193,7 @@ const TaskDetailModal = ({
                 </div>
               )}
             </div>
-            {isOwner ? (
+            {canManage ? (
               <div className="min-w-0 sm:col-span-2">
                 <div className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
                   Tags

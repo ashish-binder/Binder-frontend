@@ -1128,37 +1128,6 @@ export const getNextPOCode = async () => {
 };
 
 // ============================================================================
-// TASKS
-// ============================================================================
-
-export const createTask = async (taskData) => {
-  const endpoints = ['ims/tasks/', 'ims/task-assignments/'];
-  let lastError = null;
-
-  for (const endpoint of endpoints) {
-    const response = await apiRequest(endpoint, {
-      method: 'POST',
-      body: JSON.stringify(taskData),
-    });
-
-    let data = {};
-    try {
-      data = await response.json();
-    } catch {
-      data = {};
-    }
-
-    if (response.ok || data?.status === 'success' || data?.id || data?.data?.id) {
-      return data;
-    }
-
-    lastError = new Error(data?.detail || data?.error || data?.message || `Failed to create task at ${endpoint}`);
-  }
-
-  throw lastError || new Error('Failed to create task');
-};
-
-// ============================================================================
 // COMPANY ESSENTIALS
 // ============================================================================
 
@@ -1615,5 +1584,113 @@ export const issueStockToIpo = async (ipoId, lines) => {
     method: 'POST',
     body: JSON.stringify({ lines }),
   });
+  return await response.json();
+};
+
+// ============================================================================
+// TASKS (Kanban board) — /api/ims/tasks/
+// ============================================================================
+// The board is tenant-wide: every member sees every task in their company.
+// Payloads are camelCase to match what the Tasks components render.
+
+// Pull a readable message out of a DRF error body so the toast says what was
+// actually wrong ("Only the assignee can accept this task.") instead of a code.
+const extractError = async (response, fallback) => {
+  try {
+    const data = await response.json();
+    if (typeof data === 'string') return data;
+    if (data?.detail) return data.detail;
+    const first = Object.values(data || {})[0];
+    if (Array.isArray(first) && first.length) return String(first[0]);
+    if (typeof first === 'string') return first;
+  } catch {
+    /* non-JSON body — fall through */
+  }
+  return fallback;
+};
+
+export const getTasks = async (params = {}) => {
+  const query = new URLSearchParams(params).toString();
+  const response = await apiRequest(`ims/tasks/${query ? '?' + query : ''}`);
+  if (!response.ok) throw new Error('Failed to load tasks');
+  return await response.json();
+};
+
+export const createTask = async (payload) => {
+  const response = await apiRequest('ims/tasks/', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) throw new Error(await extractError(response, 'Failed to create task'));
+  return await response.json();
+};
+
+export const updateTask = async (taskId, payload) => {
+  const response = await apiRequest(`ims/tasks/${taskId}/`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) throw new Error(await extractError(response, 'Failed to update task'));
+  return await response.json();
+};
+
+export const deleteTask = async (taskId) => {
+  const response = await apiRequest(`ims/tasks/${taskId}/`, { method: 'DELETE' });
+  if (!response.ok) throw new Error(await extractError(response, 'Failed to delete task'));
+  return true;
+};
+
+// Drag & drop — status + position only, kept small so the card lands instantly.
+export const moveTask = async (taskId, status, position) => {
+  const response = await apiRequest(`ims/tasks/${taskId}/move/`, {
+    method: 'PATCH',
+    body: JSON.stringify({ status, position }),
+  });
+  if (!response.ok) throw new Error(await extractError(response, 'Failed to move task'));
+  return await response.json();
+};
+
+// The assignee acknowledges an assignment (clears their sticky toast).
+export const acceptTask = async (taskId) => {
+  const response = await apiRequest(`ims/tasks/${taskId}/accept/`, { method: 'POST' });
+  if (!response.ok) throw new Error(await extractError(response, 'Failed to accept task'));
+  return await response.json();
+};
+
+export const getPendingAcceptanceTasks = async () => {
+  const response = await apiRequest('ims/tasks/pending-acceptance/');
+  if (!response.ok) throw new Error('Failed to load pending tasks');
+  return await response.json();
+};
+
+export const addTaskComment = async (taskId, message) => {
+  const response = await apiRequest(`ims/tasks/${taskId}/comments/`, {
+    method: 'POST',
+    body: JSON.stringify({ message }),
+  });
+  if (!response.ok) throw new Error(await extractError(response, 'Failed to add comment'));
+  return await response.json();
+};
+
+// Flip one checklist item; omit `done` to toggle. Returns the whole task so the
+// card's progress bar re-renders from the server's copy.
+export const toggleTaskSubtask = async (taskId, subtaskId, done) => {
+  const response = await apiRequest(`ims/tasks/${taskId}/subtask/`, {
+    method: 'PATCH',
+    body: JSON.stringify(done === undefined ? { subtaskId } : { subtaskId, done }),
+  });
+  if (!response.ok) throw new Error(await extractError(response, 'Failed to update sub-task'));
+  return await response.json();
+};
+
+export const getAssignableUsers = async () => {
+  const response = await apiRequest('ims/tasks/assignable-users/');
+  if (!response.ok) throw new Error('Failed to load team members');
+  return await response.json();
+};
+
+export const getTaskChoices = async () => {
+  const response = await apiRequest('ims/tasks/choices/');
+  if (!response.ok) throw new Error('Failed to load task choices');
   return await response.json();
 };

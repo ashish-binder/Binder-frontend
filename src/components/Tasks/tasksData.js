@@ -1,5 +1,9 @@
 // Pure data, option lists, class strings, and small helpers for the Tasks Kanban board.
 // No JSX here so this stays a plain data module (imported by every Tasks subcomponent).
+//
+// Task data itself lives in the backend (/api/ims/tasks/) — nothing here is stored
+// client-side. See services/integration.js for the API layer.
+import { getUser as getStoredUser } from '../../api/authService';
 
 /* ------------------------------------------------------------------ *
  * Flat/clean theme class strings (match the StockSheet revamp).
@@ -94,13 +98,14 @@ export const formatDueDate = (value) => {
 };
 
 /* ------------------------------------------------------------------ *
- * Current user — read from localStorage ('user'). A task belongs to the
- * logged-in user when its `ownerId` matches this id (used by "My Tasks").
+ * Current user — delegated to authService, which is the single source of
+ * truth for the session and honours "Remember me" (localStorage vs
+ * sessionStorage). Reading localStorage directly here would return null for
+ * anyone who logged in without ticking it.
  * ------------------------------------------------------------------ */
 export const getCurrentUser = () => {
   try {
-    const raw = localStorage.getItem('user');
-    return raw ? JSON.parse(raw) : null;
+    return getStoredUser();
   } catch {
     return null;
   }
@@ -137,114 +142,20 @@ export const getSubtaskProgress = (task) => {
 };
 
 /* ------------------------------------------------------------------ *
- * Seed data — mirrors the reference screenshots. Replaced with API data later.
+ * Relative time — the Done card shows "Completed 2h ago", derived from the
+ * server's completed_at timestamp rather than a stored string.
  * ------------------------------------------------------------------ */
-export const SAMPLE_TASKS = [
-  {
-    id: 'task-seed-1',
-    title: 'Implement Fabric Durability Test Protocols',
-    description:
-      'Define the new standard for elastic resistance in premium denim series before the next production run.',
-    priority: 'High',
-    status: 'backlog',
-    assignee: 'Priya Shah',
-    department: 'Quality',
-    ipo: '',
-    dueDate: '2026-10-24',
-    tags: [],
-    comments: [
-      {
-        id: 'c-seed-1a',
-        userId: 'seed-user-2',
-        name: 'Rahul Verma',
-        message: 'Should we include the abrasion test from the ISO spec?',
-      },
-      {
-        id: 'c-seed-1b',
-        userId: 'seed-user-3',
-        name: 'Neha Gupta',
-        message: 'Yes, and add the colorfastness check too.',
-      },
-    ],
-    attachments: 0,
-    ownerId: 'seed-user-1',
-  },
-  {
-    id: 'task-seed-2',
-    title: 'Update IPO Management Dashboard UI',
-    description:
-      'Migrate old chart components to the new D3 high-performance library and match the flat theme.',
-    priority: 'Medium',
-    status: 'backlog',
-    assignee: 'Rahul Verma',
-    department: 'Design',
-    ipo: '',
-    dueDate: '2026-10-28',
-    tags: [],
-    ownerId: 'seed-user-2',
-  },
-  {
-    id: 'task-seed-3',
-    title: 'Vendor Onboarding: Textile Suppliers Q3',
-    description:
-      'Collect compliance documents and bank details for four new vendors and generate their codes.',
-    priority: 'Medium',
-    status: 'backlog',
-    assignee: 'Neha Gupta',
-    department: 'Merchandising',
-    ipo: '',
-    dueDate: '2026-11-02',
-    tags: [],
-    ownerId: 'seed-user-3',
-  },
-  {
-    id: 'task-seed-4',
-    title: 'Critical Bug: Purchase Order Total Mismatch',
-    description:
-      'Floating point calculation error in inventory aggregation for regional units.',
-    priority: 'Urgent',
-    status: 'in_progress',
-    assignee: 'John Doe',
-    department: 'Production',
-    ipo: '',
-    dueDate: '2026-10-20',
-    tags: [],
-    attachments: 2,
-    subTasks: [
-      { id: 'sub-seed-4a', title: 'Reproduce the rounding error', done: true },
-      { id: 'sub-seed-4b', title: 'Add a failing unit test', done: true },
-      { id: 'sub-seed-4c', title: 'Patch the aggregation function', done: true },
-      { id: 'sub-seed-4d', title: 'Run the regression suite', done: false },
-      { id: 'sub-seed-4e', title: 'Ship the hotfix', done: false },
-    ],
-    ownerId: 'seed-user-4',
-  },
-  {
-    id: 'task-seed-5',
-    title: 'QA Check: New Warehouse Layout',
-    description: 'Verify rack labelling and pick-path against the approved plan.',
-    priority: 'Low',
-    status: 'in_review',
-    assignee: 'Sara Lee',
-    department: 'Logistics',
-    ipo: '',
-    dueDate: '',
-    tags: ['Logistics', 'V2.4'],
-    statusNote: 'Pending Approval',
-    ownerId: 'seed-user-5',
-  },
-  {
-    id: 'task-seed-6',
-    title: 'Monthly Inventory Reconciliation',
-    description: 'Reconcile physical stock counts with the system ledger for September.',
-    priority: 'Low',
-    status: 'done',
-    assignee: 'Amit Roy',
-    department: 'Accounts',
-    ipo: '',
-    dueDate: '',
-    tags: [],
-    completedAt: 'Completed 2h ago',
-    ownerId: 'seed-user-6',
-  },
-];
+export const formatRelativeTime = (value) => {
+  if (!value) return '';
+  const then = new Date(value).getTime();
+  if (Number.isNaN(then)) return '';
+  const seconds = Math.max(0, Math.floor((Date.now() - then) / 1000));
+  if (seconds < 60) return 'just now';
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 30) return `${days}d ago`;
+  return new Date(value).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+};

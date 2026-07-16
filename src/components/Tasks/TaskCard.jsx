@@ -1,18 +1,17 @@
 // A single Kanban task card.
-import { Calendar, Paperclip, MessageSquare, ShieldCheck, CheckCircle2 } from 'lucide-react';
+import { Calendar, Paperclip, MessageSquare, ShieldCheck, CheckCircle2, Clock } from 'lucide-react';
 import { Avatar, PriorityPill } from './shared';
-import { formatDueDate, getSubtaskProgress } from './tasksData';
+import { formatDueDate, formatRelativeTime, getSubtaskProgress } from './tasksData';
 
 const TaskCard = ({ task }) => {
   const isDone = task.status === 'done';
   const subProgress = getSubtaskProgress(task);
-  const legacyProgress =
-    task.status === 'in_progress' && typeof task.progress === 'number'
-      ? task.progress
-      : null;
-  const percent = subProgress ? subProgress.percent : legacyProgress;
-  const showProgress = percent !== null && percent !== undefined;
+  const percent = subProgress ? subProgress.percent : null;
+  const showProgress = percent !== null;
   const due = formatDueDate(task.dueDate);
+  const completed = formatRelativeTime(task.completedAt);
+  // Assigned to someone who hasn't picked it up yet.
+  const awaitingAcceptance = task.acceptance === 'pending';
 
   return (
     <div className="cursor-pointer rounded-lg border border-[#e2e3e8] bg-card p-3.5 shadow-sm transition-shadow hover:shadow-md">
@@ -86,13 +85,19 @@ const TaskCard = ({ task }) => {
 
       {/* Footer meta */}
       <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11px] text-muted-foreground">
-        {isDone && task.completedAt ? (
+        {isDone && completed ? (
           <span className="inline-flex items-center gap-1 font-medium text-green-600">
             <CheckCircle2 className="h-3.5 w-3.5" />
-            {task.completedAt}
+            Completed {completed}
           </span>
         ) : (
           <>
+            {awaitingAcceptance && (
+              <span className="inline-flex items-center gap-1 font-medium text-amber-600">
+                <Clock className="h-3.5 w-3.5" />
+                Awaiting acceptance
+              </span>
+            )}
             {due && (
               <span className="inline-flex items-center gap-1">
                 <Calendar className="h-3.5 w-3.5" />

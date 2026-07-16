@@ -1,8 +1,9 @@
-// "Assign New Task" modal — portalled to <body>. Collects the task fields and hands a
-// plain task object back via onSubmit; it does not touch any API (parent stores in state).
+// "Assign New Task" modal — portalled to <body>. Collects the task fields, uploads any
+// attachment to Vercel Blob, and hands the API payload back via onSubmit (the parent
+// does the create/update call).
 import { useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Search } from 'lucide-react';
+import { X, Loader2 } from 'lucide-react';
 import ThemedSelect from '../IMS/StockSheet/ThemedSelect';
 import {
   Field,
@@ -23,6 +24,7 @@ import {
   toOptions,
 } from './tasksData';
 import { normalizeOrderType } from '../../utils/orderType';
+import { uploadToBlob } from '../../services/blobUpload';
 
 const todayValue = () => {
   const now = new Date();
@@ -32,26 +34,44 @@ const todayValue = () => {
   return `${yyyy}-${mm}-${dd}`;
 };
 
-const AssignTaskModal = ({ ipos = [], task = null, onClose, onSubmit }) => {
+const AssignTaskModal = ({
+  ipos = [],
+  members = [],
+  task = null,
+  onClose,
+  onSubmit,
+}) => {
   const isEditing = !!task;
   const [poType, setPoType] = useState(task?.poType || '');
   const [ipo, setIpo] = useState(task?.ipo || '');
   const [department, setDepartment] = useState(task?.department || '');
-  const [assignee, setAssignee] = useState(
-    task?.assignee && task.assignee !== 'Unassigned' ? task.assignee : '',
-  );
+  // The real member id — assignment has to resolve to an actual user, not a name.
+  const [assigneeId, setAssigneeId] = useState(task?.assigneeId || '');
   const [title, setTitle] = useState(task?.title || '');
   const [subTasks, setSubTasks] = useState(
     Array.isArray(task?.subTasks) ? task.subTasks : [],
   );
   const [remarks, setRemarks] = useState(task?.description || '');
   const [dueDate, setDueDate] = useState(task?.dueDate || '');
-  const [attachment, setAttachment] = useState(task?.attachment || null);
+  // Either a freshly picked File, or the existing blob URL when editing.
+  const [attachment, setAttachment] = useState(null);
+  const [attachmentUrl, setAttachmentUrl] = useState(task?.attachmentUrl || '');
+  const [attachmentName, setAttachmentName] = useState(task?.attachmentName || '');
   const [priority, setPriority] = useState(task?.priority || 'Medium');
   const [tags, setTags] = useState(Array.isArray(task?.tags) ? task.tags : []);
   const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
 
   const today = useMemo(() => todayValue(), []);
+
+  const memberOptions = useMemo(
+    () =>
+      members.map((m) => ({
+        value: m.id,
+        label: m.designation ? `${m.name} · ${m.designation}` : m.name || m.email,
+      })),
+    [members],
+  );
 
   // IPO options for the selected PO type.
   const ipoOptions = useMemo(() => {
@@ -71,31 +91,58 @@ const AssignTaskModal = ({ ipos = [], task = null, onClose, onSubmit }) => {
     setIpo('');
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!title.trim()) {
       setError('Task name is required.');
       return;
     }
-    const hasFile = attachment instanceof File;
-    // Keep the image locally: hold the File plus a viewable object URL + name.
-    // (No upload yet — swap for a real URL when the endpoint lands.)
-    const attachmentUrl = hasFile ? URL.createObjectURL(attachment) : '';
-    onSubmit({
-      title: title.trim(),
-      subTasks,
-      description: remarks.trim(),
-      priority,
-      poType,
-      ipo,
-      department,
-      assignee: assignee.trim() || 'Unassigned',
-      dueDate,
-      attachment: hasFile ? attachment : null,
-      attachmentUrl,
-      attachmentName: hasFile ? attachment.name : '',
-      attachments: hasFile ? 1 : 0,
-      tags,
-    });
+
+    setSaving(true);
+    try {
+      // Upload to Vercel Blob first and persist only the public URL — a local
+      // object URL would die with the tab and be invisible to teammates.
+      let url = attachmentUrl;
+      let name = attachmentName;
+      if (attachment instanceof File) {
+        const uploaded = await uploadToBlob(attachment, 'tasks/attachments');
+        if (!uploaded) {
+          setError('Image upload failed. Remove the image or try again.');
+          setSaving(false);
+          return;
+        }
+        url = uploaded;
+        name = attachment.name;
+      }
+
+      await onSubmit({
+        title: title.trim(),
+        subTasks,
+        description: remarks.trim(),
+        priority,
+        poType,
+        ipo,
+        department,
+        assigneeId: assigneeId || null,
+        dueDate,
+        attachmentUrl: url || '',
+        attachmentName: url ? name : '',
+        tags,
+      });
+    } catch (submitError) {
+      setError(submitError.message || 'Could not save the task.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Clearing the picker must also drop an already-uploaded URL, or the old image
+  // silently survives the save.
+  const handleAttachmentChange = (file) => {
+    setAttachment(file);
+    if (!file) {
+      setAttachmentUrl('');
+      setAttachmentName('');
+    }
   };
 
   return createPortal(
@@ -171,16 +218,17 @@ const AssignTaskModal = ({ ipos = [], task = null, onClose, onSubmit }) => {
                 />
               </Field>
               <Field label="Assign to User">
-                <div className="relative">
-                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                  <input
-                    type="text"
-                    value={assignee}
-                    onChange={(e) => setAssignee(e.target.value)}
-                    placeholder="Search team member..."
-                    className={`${CTRL} pl-10`}
-                  />
-                </div>
+                <ThemedSelect
+                  value={assigneeId}
+                  onChange={setAssigneeId}
+                  options={memberOptions}
+                  isDisabled={memberOptions.length === 0}
+                  placeholder={
+                    memberOptions.length === 0
+                      ? 'No team members found'
+                      : 'Search team member...'
+                  }
+                />
               </Field>
             </div>
           </section>
@@ -226,7 +274,9 @@ const AssignTaskModal = ({ ipos = [], task = null, onClose, onSubmit }) => {
                   <ImageUpload
                     id="assign-task-attachment"
                     value={attachment}
-                    onChange={setAttachment}
+                    existingUrl={attachmentUrl}
+                    existingName={attachmentName}
+                    onChange={handleAttachmentChange}
                   />
                 </Field>
               </div>
@@ -249,11 +299,26 @@ const AssignTaskModal = ({ ipos = [], task = null, onClose, onSubmit }) => {
 
         {/* Footer */}
         <div className="flex items-center justify-end gap-3 border-t border-[#e2e3e8] px-6 py-4">
-          <button type="button" onClick={onClose} className={GHOST_BTN}>
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={saving}
+            className={GHOST_BTN}
+          >
             Cancel
           </button>
-          <button type="button" onClick={handleSubmit} className={PRIMARY_BTN}>
-            {isEditing ? 'Save Changes' : 'Assign Task'}
+          <button
+            type="button"
+            onClick={handleSubmit}
+            disabled={saving}
+            className={PRIMARY_BTN}
+          >
+            {saving && <Loader2 className="h-4 w-4 animate-spin" />}
+            {saving
+              ? 'Saving...'
+              : isEditing
+                ? 'Save Changes'
+                : 'Assign Task'}
           </button>
         </div>
       </div>

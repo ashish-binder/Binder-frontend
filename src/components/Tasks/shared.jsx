@@ -224,26 +224,40 @@ const truncateName = (name, max = 24) => {
 };
 
 // Themed image picker: dashed upload button, or once chosen a thumbnail + name + X to clear.
-export const ImageUpload = ({ id, value, onChange, label = 'Upload Reference Image' }) => {
+//
+// `value` is a freshly picked File. `existingUrl`/`existingName` describe an image
+// already uploaded to Blob (i.e. we're editing a saved task) — without them the
+// picker would look empty on edit and the saved image would appear to be gone.
+export const ImageUpload = ({
+  id,
+  value,
+  existingUrl = '',
+  existingName = '',
+  onChange,
+  label = 'Upload Reference Image',
+}) => {
   const [preview, setPreview] = useState(null);
 
   useEffect(() => {
     if (!value) {
       setPreview(null);
-      return;
+      return undefined;
     }
     const url = URL.createObjectURL(value);
     setPreview(url);
     return () => URL.revokeObjectURL(url);
   }, [value]);
 
-  if (value) {
+  const shownUrl = preview || existingUrl;
+  const shownName = value?.name || existingName;
+
+  if (value || existingUrl) {
     return (
       <div className="flex items-center gap-2.5 rounded-md border border-[#e2e3e8] bg-card p-1.5">
-        {preview ? (
+        {shownUrl ? (
           <img
-            src={preview}
-            alt={value.name}
+            src={shownUrl}
+            alt={shownName || 'attachment'}
             className="h-10 w-10 shrink-0 rounded object-cover"
           />
         ) : (
@@ -253,9 +267,9 @@ export const ImageUpload = ({ id, value, onChange, label = 'Upload Reference Ima
         )}
         <span
           className="flex-1 truncate text-sm font-medium text-foreground"
-          title={value.name}
+          title={shownName}
         >
-          {truncateName(value.name)}
+          {truncateName(shownName)}
         </span>
         <button
           type="button"
