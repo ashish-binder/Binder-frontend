@@ -10,6 +10,7 @@ import {
   formatPriorityLabel,
   getInitials,
   avatarColorFor,
+  makeSubtaskId,
 } from './tasksData';
 
 export const Input = ({ className = '', ...props }) => (
@@ -26,6 +27,128 @@ export const Field = ({ label, required, children, className = '' }) => (
     {children}
   </div>
 );
+
+// Tag input — type a tag and press Enter (or comma) to add a chip; X or Backspace removes.
+export const TagsInput = ({ value = [], onChange, placeholder = 'Add tag and press Enter' }) => {
+  const [draft, setDraft] = useState('');
+  const tags = Array.isArray(value) ? value : [];
+
+  const addTag = (raw) => {
+    const v = raw.trim();
+    if (!v || tags.includes(v)) return;
+    onChange([...tags, v]);
+  };
+
+  const handleKeyDown = (e) => {
+    if ((e.key === 'Enter' || e.key === ',') && draft.trim()) {
+      e.preventDefault();
+      addTag(draft);
+      setDraft('');
+    } else if (e.key === 'Backspace' && draft === '' && tags.length > 0) {
+      onChange(tags.slice(0, -1));
+    }
+  };
+
+  return (
+    <div className="flex min-h-11 w-full flex-wrap items-center gap-2 rounded-md border border-[#e2e3e8] bg-card px-3 py-2 text-sm transition-colors focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/15">
+      {tags.map((tag) => (
+        <span
+          key={tag}
+          className="inline-flex items-center gap-1.5 rounded-full border border-[#e2e3e8] bg-muted px-2.5 py-1 text-xs font-medium text-foreground"
+        >
+          {tag}
+          <button
+            type="button"
+            onClick={() => onChange(tags.filter((t) => t !== tag))}
+            title="Remove"
+            className="flex h-4 w-4 cursor-pointer items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+          >
+            <X className="h-3 w-3" />
+          </button>
+        </span>
+      ))}
+      <input
+        type="text"
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onKeyDown={handleKeyDown}
+        placeholder={tags.length === 0 ? placeholder : 'Add more...'}
+        className="min-w-28 flex-1 bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground"
+      />
+    </div>
+  );
+};
+
+// Editor for a task's checklist of sub-tasks (used in the create/edit modal). Type a
+// title and press Enter (or click Add) to append; each row has a remove button. Existing
+// `done` state is preserved.
+export const SubTasksEditor = ({ value = [], onChange }) => {
+  const [draft, setDraft] = useState('');
+  const items = Array.isArray(value) ? value : [];
+
+  const addItem = () => {
+    const title = draft.trim();
+    if (!title) return;
+    onChange([...items, { id: makeSubtaskId(), title, done: false }]);
+    setDraft('');
+  };
+
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      addItem();
+    }
+  };
+
+  return (
+    <div className="space-y-2">
+      {items.length > 0 && (
+        <ul className="space-y-1.5">
+          {items.map((item) => (
+            <li
+              key={item.id}
+              className="flex items-center gap-2 rounded-md border border-[#e2e3e8] bg-card px-3 py-2 text-sm"
+            >
+              <span
+                className={`flex-1 truncate ${
+                  item.done ? 'text-muted-foreground line-through' : 'text-foreground'
+                }`}
+              >
+                {item.title}
+              </span>
+              <button
+                type="button"
+                onClick={() => onChange(items.filter((x) => x.id !== item.id))}
+                title="Remove sub-task"
+                className="flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className="flex gap-2">
+        <input
+          type="text"
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={handleKeyDown}
+          placeholder="Add a sub-task and press Enter"
+          className={CTRL}
+        />
+        <button
+          type="button"
+          onClick={addItem}
+          disabled={!draft.trim()}
+          className="inline-flex shrink-0 cursor-pointer items-center justify-center rounded-md border border-[#e2e3e8] bg-card px-4 text-sm font-semibold text-foreground/70 transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          Add
+        </button>
+      </div>
+    </div>
+  );
+};
 
 // Orange-accented section header used inside the Assign modal.
 export const SectionHeader = ({ children }) => (

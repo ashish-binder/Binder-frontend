@@ -1,8 +1,15 @@
 // Expanded task view — portalled to <body>. Read-only detail plus quick "move to stage" buttons.
+import { useState } from 'react';
 import { createPortal } from 'react-dom';
-import { X } from 'lucide-react';
-import { PriorityPill, Avatar } from './shared';
-import { COLUMNS, formatDueDate, formatPriorityLabel } from './tasksData';
+import { X, MessageSquare, Send, Pencil, Trash2, ListChecks } from 'lucide-react';
+import { PriorityPill, Avatar, TagsInput } from './shared';
+import {
+  CTRL,
+  COLUMNS,
+  formatDueDate,
+  formatPriorityLabel,
+  getSubtaskProgress,
+} from './tasksData';
 
 const Detail = ({ label, value }) => (
   <div className="min-w-0">
@@ -15,12 +22,37 @@ const Detail = ({ label, value }) => (
   </div>
 );
 
-const TaskDetailModal = ({ task, onClose, onMove }) => {
+const TaskDetailModal = ({
+  task,
+  onClose,
+  onMove,
+  onAddComment,
+  currentUserName,
+  isOwner = false,
+  onEdit,
+  onDelete,
+  onUpdateTags,
+  onToggleSubtask,
+}) => {
+  const [draft, setDraft] = useState('');
   if (!task) return null;
+  const subTasks = Array.isArray(task.subTasks) ? task.subTasks : [];
+  const subProgress = getSubtaskProgress(task);
   const columnLabel =
     COLUMNS.find((c) => c.key === task.status)?.label || task.status;
   const attachmentName =
-    task.attachment?.name || (task.attachments ? `${task.attachments} attachment(s)` : '');
+    task.attachmentName ||
+    task.attachment?.name ||
+    (task.attachments ? `${task.attachments} attachment(s)` : '');
+  const attachmentUrl = task.attachmentUrl || '';
+  const comments = Array.isArray(task.comments) ? task.comments : [];
+
+  const submitComment = () => {
+    const text = draft.trim();
+    if (!text) return;
+    onAddComment(task.id, text);
+    setDraft('');
+  };
 
   return createPortal(
     <div
@@ -43,14 +75,37 @@ const TaskDetailModal = ({ task, onClose, onMove }) => {
             </div>
             <h2 className="text-lg font-bold text-foreground">{task.title}</h2>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            title="Close"
-            className="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-          >
-            <X className="h-5 w-5" />
-          </button>
+          <div className="flex shrink-0 items-center gap-1">
+            {isOwner && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => onEdit(task)}
+                  title="Edit task"
+                  className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                >
+                  <Pencil className="h-4 w-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onDelete(task.id)}
+                  title="Delete task"
+                  className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-md text-destructive transition-colors hover:bg-destructive/10"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
+                <span className="mx-1 h-5 w-px bg-[#e2e3e8]" />
+              </>
+            )}
+            <button
+              type="button"
+              onClick={onClose}
+              title="Close"
+              className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </div>
         </div>
 
         {/* Body */}
@@ -81,27 +136,172 @@ const TaskDetailModal = ({ task, onClose, onMove }) => {
             <Detail label="Department" value={task.department} />
             <Detail label="PO Type" value={task.poType} />
             <Detail label="IPO Reference" value={task.ipo} />
-            <Detail label="Sub-Task" value={task.subTask} />
             <Detail label="Due Date" value={formatDueDate(task.dueDate)} />
             <Detail label="Priority" value={formatPriorityLabel(task.priority)} />
-            <Detail label="Attachment" value={attachmentName} />
-            {Array.isArray(task.tags) && task.tags.length > 0 && (
+            <div className="min-w-0">
+              <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                Attachment
+              </div>
+              {attachmentUrl ? (
+                <a
+                  href={attachmentUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="mt-1 flex items-center gap-2"
+                  title="Open image"
+                >
+                  <img
+                    src={attachmentUrl}
+                    alt={attachmentName || 'attachment'}
+                    className="h-11 w-11 shrink-0 rounded border border-[#e2e3e8] object-cover"
+                  />
+                  <span className="truncate text-sm font-medium text-primary hover:underline">
+                    {attachmentName || 'View image'}
+                  </span>
+                </a>
+              ) : (
+                <div className="mt-0.5 break-words text-sm text-foreground">
+                  {attachmentName || '—'}
+                </div>
+              )}
+            </div>
+            {isOwner ? (
               <div className="min-w-0 sm:col-span-2">
-                <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                <div className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
                   Tags
                 </div>
-                <div className="mt-1 flex flex-wrap gap-1.5">
-                  {task.tags.map((tag) => (
-                    <span
-                      key={tag}
-                      className="rounded border border-[#e2e3e8] bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground"
-                    >
-                      {tag}
-                    </span>
-                  ))}
+                <TagsInput
+                  value={task.tags || []}
+                  onChange={(next) => onUpdateTags(task.id, next)}
+                />
+              </div>
+            ) : (
+              Array.isArray(task.tags) &&
+              task.tags.length > 0 && (
+                <div className="min-w-0 sm:col-span-2">
+                  <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    Tags
+                  </div>
+                  <div className="mt-1 flex flex-wrap gap-1.5">
+                    {task.tags.map((tag) => (
+                      <span
+                        key={tag}
+                        className="rounded border border-[#e2e3e8] bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground"
+                      >
+                        {tag}
+                      </span>
+                    ))}
+                  </div>
                 </div>
+              )
+            )}
+          </div>
+
+          {/* Sub-tasks */}
+          {subTasks.length > 0 && (
+            <div className="mt-6 border-t border-[#e2e3e8] pt-5">
+              <div className="mb-3 flex items-center justify-between">
+                <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  <ListChecks className="h-3.5 w-3.5" />
+                  Sub-tasks
+                </div>
+                {subProgress && (
+                  <span className="text-xs font-medium text-muted-foreground">
+                    {subProgress.done}/{subProgress.total} · {subProgress.percent}%
+                  </span>
+                )}
+              </div>
+
+              {subProgress && (
+                <div className="mb-3 h-1.5 w-full overflow-hidden rounded-full bg-muted">
+                  <div
+                    className="h-full rounded-full bg-primary transition-all"
+                    style={{ width: `${subProgress.percent}%` }}
+                  />
+                </div>
+              )}
+
+              <ul className="space-y-1.5">
+                {subTasks.map((sub) => (
+                  <li key={sub.id}>
+                    <label className="flex cursor-pointer items-center gap-2.5 rounded-md border border-[#e2e3e8] bg-card px-3 py-2 transition-colors hover:bg-muted/50">
+                      <input
+                        type="checkbox"
+                        checked={!!sub.done}
+                        onChange={() => onToggleSubtask(task.id, sub.id)}
+                        className="h-4 w-4 shrink-0 cursor-pointer accent-[#f94d00]"
+                      />
+                      <span
+                        className={`text-sm ${
+                          sub.done
+                            ? 'text-muted-foreground line-through'
+                            : 'text-foreground'
+                        }`}
+                      >
+                        {sub.title}
+                      </span>
+                    </label>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {/* Comments */}
+          <div className="mt-6 border-t border-[#e2e3e8] pt-5">
+            <div className="mb-3 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+              <MessageSquare className="h-3.5 w-3.5" />
+              Comments ({comments.length})
+            </div>
+
+            {comments.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                No comments yet. Start the conversation.
+              </p>
+            ) : (
+              <div className="space-y-3">
+                {comments.map((comment) => (
+                  <div key={comment.id} className="flex gap-2.5">
+                    <Avatar name={comment.name} size="h-7 w-7" />
+                    <div className="min-w-0 flex-1 rounded-lg border border-[#e2e3e8] bg-muted/40 px-3 py-2">
+                      <div className="text-xs font-semibold text-foreground">
+                        {comment.name}
+                      </div>
+                      <p className="mt-0.5 break-words text-sm text-foreground">
+                        {comment.message}
+                      </p>
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
+
+            {/* New comment */}
+            <div className="mt-4 flex items-center gap-2.5">
+              <Avatar name={currentUserName || 'You'} size="h-7 w-7" />
+              <input
+                type="text"
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    submitComment();
+                  }
+                }}
+                placeholder="Write a comment..."
+                className={CTRL}
+              />
+              <button
+                type="button"
+                onClick={submitComment}
+                disabled={!draft.trim()}
+                title="Send"
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground transition-all hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <Send className="h-4 w-4" />
+              </button>
+            </div>
           </div>
         </div>
 
