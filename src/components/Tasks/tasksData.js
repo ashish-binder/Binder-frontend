@@ -94,6 +94,49 @@ export const formatDueDate = (value) => {
 };
 
 /* ------------------------------------------------------------------ *
+ * Current user — read from localStorage ('user'). A task belongs to the
+ * logged-in user when its `ownerId` matches this id (used by "My Tasks").
+ * ------------------------------------------------------------------ */
+export const getCurrentUser = () => {
+  try {
+    const raw = localStorage.getItem('user');
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+};
+
+export const getCurrentUserId = () => getCurrentUser()?.id || null;
+
+export const getCurrentUserName = () => {
+  const user = getCurrentUser();
+  if (!user) return '';
+  return (
+    user.full_name ||
+    user.name ||
+    [user.first_name, user.last_name].filter(Boolean).join(' ').trim() ||
+    user.email ||
+    ''
+  );
+};
+
+/* ------------------------------------------------------------------ *
+ * Sub-tasks — a checklist per task. Progress is derived from completion.
+ * ------------------------------------------------------------------ */
+let subtaskSeq = 0;
+export const makeSubtaskId = () => {
+  subtaskSeq += 1;
+  return `sub-${Date.now()}-${subtaskSeq}`;
+};
+
+export const getSubtaskProgress = (task) => {
+  const subs = Array.isArray(task?.subTasks) ? task.subTasks : [];
+  if (subs.length === 0) return null;
+  const done = subs.filter((s) => s.done).length;
+  return { done, total: subs.length, percent: Math.round((done / subs.length) * 100) };
+};
+
+/* ------------------------------------------------------------------ *
  * Seed data — mirrors the reference screenshots. Replaced with API data later.
  * ------------------------------------------------------------------ */
 export const SAMPLE_TASKS = [
@@ -109,9 +152,22 @@ export const SAMPLE_TASKS = [
     ipo: '',
     dueDate: '2026-10-24',
     tags: [],
-    comments: 4,
+    comments: [
+      {
+        id: 'c-seed-1a',
+        userId: 'seed-user-2',
+        name: 'Rahul Verma',
+        message: 'Should we include the abrasion test from the ISO spec?',
+      },
+      {
+        id: 'c-seed-1b',
+        userId: 'seed-user-3',
+        name: 'Neha Gupta',
+        message: 'Yes, and add the colorfastness check too.',
+      },
+    ],
     attachments: 0,
-    mine: false,
+    ownerId: 'seed-user-1',
   },
   {
     id: 'task-seed-2',
@@ -125,7 +181,7 @@ export const SAMPLE_TASKS = [
     ipo: '',
     dueDate: '2026-10-28',
     tags: [],
-    mine: true,
+    ownerId: 'seed-user-2',
   },
   {
     id: 'task-seed-3',
@@ -139,7 +195,7 @@ export const SAMPLE_TASKS = [
     ipo: '',
     dueDate: '2026-11-02',
     tags: [],
-    mine: false,
+    ownerId: 'seed-user-3',
   },
   {
     id: 'task-seed-4',
@@ -154,8 +210,14 @@ export const SAMPLE_TASKS = [
     dueDate: '2026-10-20',
     tags: [],
     attachments: 2,
-    progress: 60,
-    mine: true,
+    subTasks: [
+      { id: 'sub-seed-4a', title: 'Reproduce the rounding error', done: true },
+      { id: 'sub-seed-4b', title: 'Add a failing unit test', done: true },
+      { id: 'sub-seed-4c', title: 'Patch the aggregation function', done: true },
+      { id: 'sub-seed-4d', title: 'Run the regression suite', done: false },
+      { id: 'sub-seed-4e', title: 'Ship the hotfix', done: false },
+    ],
+    ownerId: 'seed-user-4',
   },
   {
     id: 'task-seed-5',
@@ -169,7 +231,7 @@ export const SAMPLE_TASKS = [
     dueDate: '',
     tags: ['Logistics', 'V2.4'],
     statusNote: 'Pending Approval',
-    mine: false,
+    ownerId: 'seed-user-5',
   },
   {
     id: 'task-seed-6',
@@ -183,6 +245,6 @@ export const SAMPLE_TASKS = [
     dueDate: '',
     tags: [],
     completedAt: 'Completed 2h ago',
-    mine: true,
+    ownerId: 'seed-user-6',
   },
 ];

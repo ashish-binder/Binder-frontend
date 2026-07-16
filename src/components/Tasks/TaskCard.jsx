@@ -1,12 +1,17 @@
 // A single Kanban task card.
 import { Calendar, Paperclip, MessageSquare, ShieldCheck, CheckCircle2 } from 'lucide-react';
 import { Avatar, PriorityPill } from './shared';
-import { formatDueDate } from './tasksData';
+import { formatDueDate, getSubtaskProgress } from './tasksData';
 
 const TaskCard = ({ task }) => {
   const isDone = task.status === 'done';
-  const showProgress =
-    task.status === 'in_progress' && typeof task.progress === 'number';
+  const subProgress = getSubtaskProgress(task);
+  const legacyProgress =
+    task.status === 'in_progress' && typeof task.progress === 'number'
+      ? task.progress
+      : null;
+  const percent = subProgress ? subProgress.percent : legacyProgress;
+  const showProgress = percent !== null && percent !== undefined;
   const due = formatDueDate(task.dueDate);
 
   return (
@@ -43,15 +48,25 @@ const TaskCard = ({ task }) => {
         </p>
       )}
 
-      {/* Progress bar (in-progress) */}
+      {/* Progress (from sub-tasks, or legacy in-progress value) */}
       {showProgress && (
-        <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-muted">
-          <div
-            className={`h-full rounded-full transition-all ${
-              task.priority === 'Urgent' ? 'bg-red-500' : 'bg-primary'
-            }`}
-            style={{ width: `${task.progress}%` }}
-          />
+        <div className="mt-3">
+          {subProgress && (
+            <div className="mb-1 flex items-center justify-between text-[11px] text-muted-foreground">
+              <span>
+                {subProgress.done}/{subProgress.total} subtasks
+              </span>
+              <span>{percent}%</span>
+            </div>
+          )}
+          <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+            <div
+              className={`h-full rounded-full transition-all ${
+                task.priority === 'Urgent' ? 'bg-red-500' : 'bg-primary'
+              }`}
+              style={{ width: `${percent}%` }}
+            />
+          </div>
         </div>
       )}
 
@@ -96,10 +111,10 @@ const TaskCard = ({ task }) => {
                 {task.attachments} attachment{task.attachments === 1 ? '' : 's'}
               </span>
             )}
-            {typeof task.comments === 'number' && task.comments > 0 && (
+            {Array.isArray(task.comments) && task.comments.length > 0 && (
               <span className="inline-flex items-center gap-1">
                 <MessageSquare className="h-3.5 w-3.5" />
-                {task.comments}
+                {task.comments.length}
               </span>
             )}
           </>

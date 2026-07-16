@@ -4,7 +4,15 @@ import { useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Search } from 'lucide-react';
 import ThemedSelect from '../IMS/StockSheet/ThemedSelect';
-import { Field, Input, SectionHeader, PrioritySegmented, ImageUpload } from './shared';
+import {
+  Field,
+  Input,
+  SectionHeader,
+  PrioritySegmented,
+  ImageUpload,
+  TagsInput,
+  SubTasksEditor,
+} from './shared';
 import {
   CTRL,
   LABEL,
@@ -24,17 +32,23 @@ const todayValue = () => {
   return `${yyyy}-${mm}-${dd}`;
 };
 
-const AssignTaskModal = ({ ipos = [], onClose, onSubmit }) => {
-  const [poType, setPoType] = useState('');
-  const [ipo, setIpo] = useState('');
-  const [department, setDepartment] = useState('');
-  const [assignee, setAssignee] = useState('');
-  const [title, setTitle] = useState('');
-  const [subTask, setSubTask] = useState('');
-  const [remarks, setRemarks] = useState('');
-  const [dueDate, setDueDate] = useState('');
-  const [attachment, setAttachment] = useState(null);
-  const [priority, setPriority] = useState('Medium');
+const AssignTaskModal = ({ ipos = [], task = null, onClose, onSubmit }) => {
+  const isEditing = !!task;
+  const [poType, setPoType] = useState(task?.poType || '');
+  const [ipo, setIpo] = useState(task?.ipo || '');
+  const [department, setDepartment] = useState(task?.department || '');
+  const [assignee, setAssignee] = useState(
+    task?.assignee && task.assignee !== 'Unassigned' ? task.assignee : '',
+  );
+  const [title, setTitle] = useState(task?.title || '');
+  const [subTasks, setSubTasks] = useState(
+    Array.isArray(task?.subTasks) ? task.subTasks : [],
+  );
+  const [remarks, setRemarks] = useState(task?.description || '');
+  const [dueDate, setDueDate] = useState(task?.dueDate || '');
+  const [attachment, setAttachment] = useState(task?.attachment || null);
+  const [priority, setPriority] = useState(task?.priority || 'Medium');
+  const [tags, setTags] = useState(Array.isArray(task?.tags) ? task.tags : []);
   const [error, setError] = useState('');
 
   const today = useMemo(() => todayValue(), []);
@@ -62,9 +76,13 @@ const AssignTaskModal = ({ ipos = [], onClose, onSubmit }) => {
       setError('Task name is required.');
       return;
     }
+    const hasFile = attachment instanceof File;
+    // Keep the image locally: hold the File plus a viewable object URL + name.
+    // (No upload yet — swap for a real URL when the endpoint lands.)
+    const attachmentUrl = hasFile ? URL.createObjectURL(attachment) : '';
     onSubmit({
       title: title.trim(),
-      subTask: subTask.trim(),
+      subTasks,
       description: remarks.trim(),
       priority,
       poType,
@@ -72,8 +90,11 @@ const AssignTaskModal = ({ ipos = [], onClose, onSubmit }) => {
       department,
       assignee: assignee.trim() || 'Unassigned',
       dueDate,
-      attachment,
-      attachments: attachment ? 1 : 0,
+      attachment: hasFile ? attachment : null,
+      attachmentUrl,
+      attachmentName: hasFile ? attachment.name : '',
+      attachments: hasFile ? 1 : 0,
+      tags,
     });
   };
 
@@ -93,9 +114,13 @@ const AssignTaskModal = ({ ipos = [], onClose, onSubmit }) => {
         {/* Header */}
         <div className="flex items-start justify-between border-b border-[#e2e3e8] px-6 py-5">
           <div>
-            <h2 className="text-xl font-bold text-foreground">Assign New Task</h2>
+            <h2 className="text-xl font-bold text-foreground">
+              {isEditing ? 'Edit Task' : 'Assign New Task'}
+            </h2>
             <p className="mt-0.5 text-sm text-muted-foreground">
-              Fill in the details to allocate task to team members.
+              {isEditing
+                ? 'Update the task details.'
+                : 'Fill in the details to allocate task to team members.'}
             </p>
           </div>
           <button
@@ -164,25 +189,20 @@ const AssignTaskModal = ({ ipos = [], onClose, onSubmit }) => {
           <section className="mt-7">
             <SectionHeader>Task Specification</SectionHeader>
             <div className="space-y-4">
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <Field label="Task Name" required>
-                  <Input
-                    value={title}
-                    onChange={(e) => {
-                      setTitle(e.target.value);
-                      if (error) setError('');
-                    }}
-                    placeholder="Enter task name"
-                  />
-                </Field>
-                <Field label="Sub-Task (Optional)">
-                  <Input
-                    value={subTask}
-                    onChange={(e) => setSubTask(e.target.value)}
-                    placeholder="Enter sub-task name"
-                  />
-                </Field>
-              </div>
+              <Field label="Task Name" required>
+                <Input
+                  value={title}
+                  onChange={(e) => {
+                    setTitle(e.target.value);
+                    if (error) setError('');
+                  }}
+                  placeholder="Enter task name"
+                />
+              </Field>
+
+              <Field label="Sub-Tasks (Optional)">
+                <SubTasksEditor value={subTasks} onChange={setSubTasks} />
+              </Field>
 
               <Field label="Remarks / Description">
                 <textarea
@@ -216,6 +236,10 @@ const AssignTaskModal = ({ ipos = [], onClose, onSubmit }) => {
                 <PrioritySegmented value={priority} onChange={setPriority} />
               </div>
 
+              <Field label="Tags">
+                <TagsInput value={tags} onChange={setTags} />
+              </Field>
+
               {error && (
                 <p className="text-xs font-medium text-destructive">{error}</p>
               )}
@@ -229,7 +253,7 @@ const AssignTaskModal = ({ ipos = [], onClose, onSubmit }) => {
             Cancel
           </button>
           <button type="button" onClick={handleSubmit} className={PRIMARY_BTN}>
-            Assign Task
+            {isEditing ? 'Save Changes' : 'Assign Task'}
           </button>
         </div>
       </div>
