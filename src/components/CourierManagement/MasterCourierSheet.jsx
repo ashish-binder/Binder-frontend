@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { getCurrentUser } from "../../api/authService";
+import { updateCourierRecord } from "../../services/integration";
 import { normalizeOrderType } from "../../utils/orderType";
 import ThemedSelect from "../IMS/StockSheet/ThemedSelect";
 import {
@@ -97,6 +98,33 @@ const MasterCourierSheet = ({ onBack }) => {
       persistCourierRecords(nextRecords);
       return nextRecords;
     });
+  };
+
+  // Master-sheet-editable fields → backend (snake_case) field names.
+  const MASTER_FIELD_API_KEYS = {
+    courierReceipt: "courier_receipt",
+    dispatchDate: "dispatch_date",
+    handoverTo: "handover_to",
+    contact: "contact",
+    awbNumber: "awb_number",
+    edd: "edd",
+    status: "status",
+  };
+
+  // Persist a single edited field to the backend on blur, when the record exists
+  // server-side. Local storage is already updated on change; this just syncs.
+  const handleMasterFieldBlur = async (record, field, value) => {
+    if (!record?.backendId) return;
+    const apiField = MASTER_FIELD_API_KEYS[field];
+    if (!apiField) return;
+    try {
+      await updateCourierRecord(record.backendId, { [apiField]: value ?? "" });
+    } catch (error) {
+      console.warn(
+        "[MasterCourierSheet] Failed to sync field to backend:",
+        error,
+      );
+    }
   };
 
   const handleMasterFilterTypeChange = (value) => {
@@ -348,6 +376,13 @@ ${
                         event.target.value,
                       )
                     }
+                    onBlur={(event) =>
+                      handleMasterFieldBlur(
+                        record,
+                        "courierReceipt",
+                        event.target.value,
+                      )
+                    }
                     placeholder="Enter courier receipt no."
                   />
                 </Field>
@@ -444,6 +479,13 @@ ${
                         event.target.value,
                       )
                     }
+                    onBlur={(event) =>
+                      handleMasterFieldBlur(
+                        record,
+                        "dispatchDate",
+                        event.target.value,
+                      )
+                    }
                   />
                 </Field>
 
@@ -457,6 +499,13 @@ ${
                     onChange={(event) =>
                       handleMasterFieldChange(
                         record.id,
+                        "handoverTo",
+                        event.target.value,
+                      )
+                    }
+                    onBlur={(event) =>
+                      handleMasterFieldBlur(
+                        record,
                         "handoverTo",
                         event.target.value,
                       )
@@ -475,6 +524,9 @@ ${
                         event.target.value,
                       )
                     }
+                    onBlur={(event) =>
+                      handleMasterFieldBlur(record, "contact", event.target.value)
+                    }
                     placeholder="Enter contact"
                   />
                 </Field>
@@ -485,6 +537,13 @@ ${
                     onChange={(event) =>
                       handleMasterFieldChange(
                         record.id,
+                        "awbNumber",
+                        event.target.value,
+                      )
+                    }
+                    onBlur={(event) =>
+                      handleMasterFieldBlur(
+                        record,
                         "awbNumber",
                         event.target.value,
                       )
@@ -504,6 +563,9 @@ ${
                         event.target.value,
                       )
                     }
+                    onBlur={(event) =>
+                      handleMasterFieldBlur(record, "edd", event.target.value)
+                    }
                   />
                 </Field>
 
@@ -516,6 +578,9 @@ ${
                         "status",
                         event.target.value,
                       )
+                    }
+                    onBlur={(event) =>
+                      handleMasterFieldBlur(record, "status", event.target.value)
                     }
                     placeholder="Enter status"
                   />

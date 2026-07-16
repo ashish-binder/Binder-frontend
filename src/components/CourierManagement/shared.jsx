@@ -396,6 +396,35 @@ const mapFetchedCourierRecord = (item = {}, fallbackRecord = {}) => {
   });
 };
 
+// Map a UI courier record to the backend (snake_case) API payload. Reused by the
+// create (Courier Slip) and update (Master Courier Sheet) calls so both stay in
+// sync with the DRF serializer field names. `box_rows` is sent as-is (camelCase
+// keys inside the JSON); the backend stores/returns it verbatim and the
+// normalizers above read either camelCase or snake_case keys on the way back.
+export const buildCourierApiPayload = (record = {}) => ({
+  ipo_type: record.ipoType || '',
+  ipo_code: record.ipoCode || '',
+  program_name: record.programName || '',
+  buyer_code: record.buyerCode || '',
+  company_type: record.companyType || '',
+  sample_as: record.sampleAs || '',
+  sample_as_other_text: record.sampleAsOtherText || '',
+  dimension_unit: record.dimensionUnit || 'CM',
+  boxes_packets: toStringValue(record.boxesPackets),
+  box_rows: Array.isArray(record.boxRows) ? record.boxRows : [],
+  attach_image_ref_url: record.attachImageRefUrl || '',
+  attach_image_ref_name: record.attachImageRefName || '',
+  dropped_by: record.droppedBy || '',
+  handed_by: record.handedBy || '',
+  dispatch_date: record.dispatchDate || '',
+  courier_receipt: record.courierReceipt || '',
+  awb_number: record.awbNumber || '',
+  edd: record.edd || '',
+  status: record.status || '',
+  handover_to: record.handoverTo || '',
+  contact: toStringValue(record.contact),
+});
+
 const getCourierRecordKey = (record) =>
   record.backendId ? `backend:${record.backendId}` : `local:${record.id}`;
 
