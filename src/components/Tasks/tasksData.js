@@ -48,7 +48,7 @@ export const PRIORITY_PILL = {
 };
 
 export const COLUMNS = [
-  { key: 'backlog', label: 'Backlog', dot: 'bg-slate-400' },
+  { key: 'backlog', label: 'Todos', dot: 'bg-slate-400' },
   { key: 'in_progress', label: 'In Progress', dot: 'bg-blue-500' },
   { key: 'in_review', label: 'In Review', dot: 'bg-amber-500' },
   { key: 'done', label: 'Done', dot: 'bg-green-500' },

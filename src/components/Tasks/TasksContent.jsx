@@ -136,6 +136,9 @@ const TasksContent = () => {
         '--accent': '#edeef1',
       }}
     >
+      {/* Hide the board's horizontal scrollbar (WebKit) — it still scrolls. */}
+      <style>{`.tasks-board-scroll::-webkit-scrollbar { display: none; }`}</style>
+
       <div className="mx-auto max-w-[95%] space-y-6">
         {/* Header + toolbar */}
         <div className="flex flex-wrap items-start justify-between gap-4">
@@ -174,7 +177,10 @@ const TasksContent = () => {
 
         {/* Board */}
         <DragDropContext onDragEnd={handleDragEnd}>
-          <div className="overflow-x-auto pb-4">
+          <div
+            className="tasks-board-scroll overflow-x-auto pb-4"
+            style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+          >
             <div className="flex gap-5">
               {COLUMNS.map((column) => (
                 <KanbanColumn
