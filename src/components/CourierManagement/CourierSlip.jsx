@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { uploadToBlob } from "../../services/blobUpload";
+import { createCourierRecord } from "../../services/integration";
 import { normalizeOrderType } from "../../utils/orderType";
 import ThemedSelect from "../IMS/StockSheet/ThemedSelect";
 import {
@@ -18,6 +19,7 @@ import {
   INITIAL_SLIP_STATE,
   IPO_TYPE_OPTIONS,
   buildBoxRows,
+  buildCourierApiPayload,
   buildRecordId,
   computeDimensionalWeight,
   getSampleAsOptions,
@@ -181,14 +183,43 @@ const CourierSlip = ({ onBack }) => {
         updatedAt: new Date().toISOString(),
       };
 
+      // Persist to the backend (database) first. We keep a local copy as an
+      // offline cache, but the success message must reflect where the slip
+      // actually landed so a server/DB save is never silently mistaken for a
+      // local-only one.
+      let savedToServer = false;
+      try {
+        const apiResult = await createCourierRecord(
+          buildCourierApiPayload(nextRecord),
+        );
+        const backendId = apiResult?.data?.id;
+        if (apiResult?.available && backendId) {
+          nextRecord.backendId = String(backendId);
+          nextRecord.persistenceSource = "api";
+          savedToServer = true;
+        }
+      } catch (apiError) {
+        console.warn(
+          "Courier slip API save failed; keeping local copy.",
+          apiError,
+        );
+      }
+
       const nextRecords = [nextRecord, ...records];
       setRecords(nextRecords);
       persistCourierRecords(nextRecords);
       resetSlipForm({ keepSelection: true });
-      setSlipMessage({
-        type: "success",
-        text: `Courier slip saved for ${nextRecord.ipoCode}. It is now available in Master Courier Sheet.`,
-      });
+      setSlipMessage(
+        savedToServer
+          ? {
+              type: "success",
+              text: `Courier slip saved to the database for ${nextRecord.ipoCode}. It is now available in Master Courier Sheet.`,
+            }
+          : {
+              type: "error",
+              text: `Saved locally for ${nextRecord.ipoCode}, but the server could not be reached — this slip is NOT in the database yet. Check your connection and save again to sync it.`,
+            },
+      );
     } catch (error) {
       console.error("Unable to save courier slip:", error);
       setSlipMessage({
